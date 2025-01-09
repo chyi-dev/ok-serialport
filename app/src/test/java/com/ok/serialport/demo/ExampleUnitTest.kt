@@ -1,4 +1,4 @@
-package com.ok.serialport
+package com.ok.serialport.demo
 
 import org.junit.Test
 

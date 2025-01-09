@@ -4,11 +4,12 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#E7E6E6"
-    android:orientation="vertical">
+    android:orientation="horizontal">
 
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
         android:orientation="vertical"
         android:padding="5dp">
 
@@ -184,8 +185,7 @@
                 android:layout_weight="1"
                 android:background="@null"
                 android:hint="请输入命令"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
+                android:padding="10dp"
                 android:textColorHint="#CECECE"
                 android:textSize="14sp" />
 
@@ -208,13 +208,13 @@
     </LinearLayout>
 
     <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
+        android:layout_width="1dp"
+        android:layout_height="match_parent"
         android:background="#BBB8B8" />
 
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
         android:layout_weight="1.5"
         android:orientation="vertical"
         android:padding="10dp">

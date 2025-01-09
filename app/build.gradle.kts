@@ -37,7 +37,7 @@ android {
         jvmTarget = "1.8"
     }
     buildFeatures {
-        compose = true
+        viewBinding = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.1"
@@ -54,6 +54,10 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
+    implementation(libs.xlog)
+    implementation(libs.autosize)
+    implementation(libs.brvah)
+    implementation(libs.utilcodex)
 
     implementation(project(":ok-serialport"))
 

@@ -44,14 +44,16 @@ class SerialPortFinder {
     fun getDrivers(): MutableList<Driver> {
         val drivers = mutableListOf<Driver>()
         val lineNumberReader = LineNumberReader(FileReader(DRIVERS_PATH))
-        var readLine: String
+        var readLine: String?
         while ((lineNumberReader.readLine().also { readLine = it }) != null) {
-            val driverName = readLine.substring(0, 0x15).trim { it <= ' ' }
-            val fields = readLine.split(" +".toRegex()).dropLastWhile { it.isEmpty() }
-                .toTypedArray()
-            if ((fields.size >= 5) && (fields[fields.size - 1] == SERIAL_FIELD)) {
-                Log.i(TAG, "Found new driver " + driverName + " on " + fields[fields.size - 4])
-                drivers.add(Driver(driverName, fields[fields.size - 4]))
+            readLine?.let { str ->
+                val driverName = str.substring(0, 0x15).trim { it <= ' ' }
+                val fields = str.split(" +".toRegex()).dropLastWhile { it.isEmpty() }
+                    .toTypedArray()
+                if ((fields.size >= 5) && (fields[fields.size - 1] == SERIAL_FIELD)) {
+                    Log.i(TAG, "Found new driver " + driverName + " on " + fields[fields.size - 4])
+                    drivers.add(Driver(driverName, fields[fields.size - 4]))
+                }
             }
         }
         return drivers
