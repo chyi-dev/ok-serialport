@@ -204,7 +204,20 @@
 
         </LinearLayout>
 
-
+        <TextView
+            android:id="@+id/btn_timing_send"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_ripple"
+            android:gravity="center"
+            android:paddingStart="20dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="10dp"
+            android:layout_margin="4dp"
+            android:text="定时发送"
+            android:textColor="@color/white"
+            android:textSize="12sp" />
     </LinearLayout>
 
     <View

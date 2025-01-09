@@ -85,9 +85,36 @@ class MainActivity : Activity() {
             }
             serialClient?.send(request)
         }
+
+        binding.btnSend.setOnClickListener {
+            val isConnect = serialClient?.isConnect() ?: false
+            if (!isConnect) {
+                Toast.makeText(this, "请开启串口", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            val data = binding.etCommand.text.toString()
+            if (TextUtils.isEmpty(data)) {
+                Toast.makeText(this, "请输入命令", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            val byteArr = ByteUtils.strToByte(data)
+            if (byteArr == null) {
+                Toast.makeText(this, "请输入合理命令", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+
+            val request = object : SerialRequest(byteArr) {
+                override fun process(bytes: ByteArray): Boolean {
+                    return true
+                }
+
+                override fun response(response: SerialResponse) {
+                }
+            }
+            serialClient?.send(request)
+        }
     }
 
-    @OptIn(ExperimentalStdlibApi::class)
     private fun openSerialPort() {
         if (serialClient?.isConnect() == true) {
             serialClient?.disconnect()
