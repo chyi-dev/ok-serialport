@@ -18,6 +18,7 @@ import com.chad.library.adapter4.BaseQuickAdapter
 import com.chad.library.adapter4.viewholder.QuickViewHolder
 import com.ok.serialport.OkSerialClient
 import com.ok.serialport.demo.databinding.ActivityMainBinding
+import com.ok.serialport.enums.ResponseState
 import com.ok.serialport.jni.SerialPortFinder
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
@@ -89,8 +90,19 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun response(response: SerialResponse) {
+                    if (response.state != ResponseState.SUCCESS) {
+                        adapter.add(
+                            LogBean(
+                                TimeUtils.getNowString(),
+                                devicePath!!,
+                                "响应",
+                                response.state.name
+                            )
+                        )
+                    }
                 }
             }
+            request.isTimeoutRetry = true
             serialClient?.send(request)
         }
 
@@ -123,10 +135,20 @@ class MainActivity : AppCompatActivity() {
                     withContext(Dispatchers.Main) {
                         val request = object : SerialRequest(byteArr) {
                             override fun process(bytes: ByteArray): Boolean {
-                                return false
+                                return true
                             }
 
                             override fun response(response: SerialResponse) {
+                                if (response.state != ResponseState.SUCCESS) {
+                                    adapter.add(
+                                        LogBean(
+                                            TimeUtils.getNowString(),
+                                            devicePath!!,
+                                            "响应",
+                                            response.state.name
+                                        )
+                                    )
+                                }
                             }
                         }
                         serialClient?.send(request)
