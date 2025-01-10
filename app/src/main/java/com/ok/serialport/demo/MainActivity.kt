@@ -1,6 +1,5 @@
 package com.ok.serialport.demo
 
-import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
@@ -11,6 +10,8 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.blankj.utilcode.util.TimeUtils
 import com.chad.library.adapter4.BaseQuickAdapter
@@ -22,14 +23,21 @@ import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
 import com.ok.serialport.model.SerialRequest
 import com.ok.serialport.model.SerialResponse
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  *
  * @author Leyi
  * @date 2025/1/9 14:50
  */
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
 
+    private var job: Job? = null
     private lateinit var adapter: BaseQuickAdapter<LogBean, QuickViewHolder>
     private lateinit var binding: ActivityMainBinding
     private val serialPortFinder by lazy {
@@ -86,7 +94,14 @@ class MainActivity : Activity() {
             serialClient?.send(request)
         }
 
-        binding.btnSend.setOnClickListener {
+        binding.btnTimingSend.setOnClickListener {
+            if (job != null) {
+                job?.cancel()
+                job = null
+                binding.btnTimingSend.text = "循环发送"
+                return@setOnClickListener
+            }
+
             val isConnect = serialClient?.isConnect() ?: false
             if (!isConnect) {
                 Toast.makeText(this, "请开启串口", Toast.LENGTH_LONG).show()
@@ -102,22 +117,35 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "请输入合理命令", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
+            job = lifecycleScope.launch {
+                while (isActive) {
+                    delay(1000)
+                    withContext(Dispatchers.Main) {
+                        val request = object : SerialRequest(byteArr) {
+                            override fun process(bytes: ByteArray): Boolean {
+                                return false
+                            }
 
-            val request = object : SerialRequest(byteArr) {
-                override fun process(bytes: ByteArray): Boolean {
-                    return true
-                }
-
-                override fun response(response: SerialResponse) {
+                            override fun response(response: SerialResponse) {
+                            }
+                        }
+                        serialClient?.send(request)
+                    }
                 }
             }
-            serialClient?.send(request)
+            binding.btnTimingSend.text = "执行中"
+        }
+
+        binding.btnClear.setOnClickListener {
+            adapter.submitList(emptyList())
         }
     }
 
     private fun openSerialPort() {
         if (serialClient?.isConnect() == true) {
             serialClient?.disconnect()
+            binding.tvOpenState.text = "开启"
+            binding.viewOpenState.setBackgroundColor(Color.RED)
             return
         }
         serialClient = OkSerialClient.Builder()
@@ -149,6 +177,9 @@ class MainActivity : Activity() {
                     )
                 )
                 binding.rvLog.smoothScrollToPosition(adapter.itemCount - 1)
+                if (adapter.itemCount > 100) {
+                    adapter.submitList(emptyList())
+                }
             }
 
             override fun onResponse(data: ByteArray) {
@@ -161,6 +192,9 @@ class MainActivity : Activity() {
                     )
                 )
                 binding.rvLog.smoothScrollToPosition(adapter.itemCount - 1)
+                if (adapter.itemCount > 100) {
+                    adapter.submitList(emptyList())
+                }
             }
         })
         serialClient?.connect()
@@ -182,6 +216,11 @@ class MainActivity : Activity() {
                 position: Int,
                 item: LogBean?
             ) {
+                if ("发送".equals(item?.name)) {
+                    holder.setTextColor(R.id.tv_name, Color.parseColor("#F27E02"))
+                } else {
+                    holder.setTextColor(R.id.tv_name, Color.parseColor("#A82BE2"))
+                }
                 holder.setText(R.id.tv_path, item?.path)
                     .setText(R.id.tv_name, item?.name)
                     .setText(R.id.tv_time, item?.time)

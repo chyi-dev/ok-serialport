@@ -36,7 +36,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
-                android:textColor="#F27E02"
+                android:textColor="#A82BE2"
                 android:layout_weight="1"
                 android:textSize="13sp"
                 tools:text="发送" />
