@@ -1,13 +1,13 @@
 package com.ok.serialport.model
 
-import com.ok.serialport.process.BaseDataProcess
+import com.ok.serialport.process.ResponseProcess
 
 /**
  * 串口请求
  * @author Leyi
  * @date 2024/10/31 11:48
  */
-abstract class SerialRequest : BaseDataProcess {
+abstract class SerialRequest : ResponseProcess {
 
     constructor(data: ByteArray) {
         this.data = data

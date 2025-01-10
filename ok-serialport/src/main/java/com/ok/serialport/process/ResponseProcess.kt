@@ -7,7 +7,7 @@ import com.ok.serialport.model.SerialResponse
  * @author Leyi
  * @date 2024/10/28 14:51
  */
-abstract class BaseDataProcess {
+abstract class ResponseProcess : ResponseMatcher {
     /**
      * 是否超时重试
      */
@@ -39,9 +39,6 @@ abstract class BaseDataProcess {
         this.timeoutRetryCount = timeoutRetryCount
         this.timeout = timeout
     }
-
-
-    abstract fun process(bytes: ByteArray): Boolean
 
     abstract fun response(response: SerialResponse)
 }

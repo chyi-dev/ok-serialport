@@ -1,5 +1,7 @@
 package com.ok.serialport
 
+import android.util.Log
+
 /**
  * 日志
  * @author Leyi
@@ -7,5 +9,6 @@ package com.ok.serialport
  */
 open class SerialLogger {
     open fun log(message: String) {
+        Log.i("OK-SerialPort", message)
     }
 }

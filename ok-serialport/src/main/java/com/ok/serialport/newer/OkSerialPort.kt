@@ -1,16 +1,18 @@
-package com.ok.serialport
+package com.ok.serialport.newer
 
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.IntRange
+import com.ok.serialport.SerialLogger
 import com.ok.serialport.enums.ResponseState
 import com.ok.serialport.enums.SerialErrorCode
 import com.ok.serialport.jni.SerialPort
-import com.ok.serialport.listener.OnConnectListener
-import com.ok.serialport.listener.OnDataListener
 import com.ok.serialport.model.SerialRequest
 import com.ok.serialport.model.SerialResponse
-import com.ok.serialport.newer.SerialPortClient
+import com.ok.serialport.newer.data.Request
+import com.ok.serialport.newer.job.DataJob
+import com.ok.serialport.newer.listener.OnConnectListener
+import com.ok.serialport.newer.listener.OnDataListener
 import com.ok.serialport.process.ResponseProcess
 import com.ok.serialport.stick.AbsStickPacketHandle
 import com.ok.serialport.stick.BaseStickPacketHandle
@@ -31,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @author Leyi
  * @date 2024/10/31 11:47
  */
-class OkSerialClient private constructor(
+class OkSerialPort private constructor(
     // 串口地址
     private val devicePath: String,
     // 波特率
@@ -49,7 +51,7 @@ class OkSerialClient private constructor(
     // 连接重试间隔
     private val retryInterval: Long,
     // 发送间隔
-    private val sendInterval: Long,
+    internal val sendInterval: Long,
     // 读取间隔
     private val readInterval: Long,
     // 离线识别间隔
@@ -64,15 +66,19 @@ class OkSerialClient private constructor(
         private const val MAX_RETRY_COUNT = 100
     }
 
-    private val serialPortClient: SerialPortClient =
+    private val serialPortClient: SerialPortClient by lazy {
         SerialPortClient(devicePath, baudRate, flags, dataBit, stopBit, parity, logger)
+    }
+    private val dataJob by lazy {
+        DataJob(this)
+    }
     private val handler = Handler(Looper.getMainLooper())
     private val isConnected = AtomicBoolean(false)
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     private var reconnectJob: Job? = null
     private var readJob: Job? = null
     private var sendJob: Job? = null
-    private val sendQueue = ConcurrentLinkedQueue<SerialRequest>()
+    private val sendQueue = ConcurrentLinkedQueue<Request>()
     private val responseProcesses = ConcurrentLinkedQueue<ResponseProcess>()
 
     // 串口连接监听
@@ -81,24 +87,33 @@ class OkSerialClient private constructor(
     // 串口全局数据监听
     private var onDataListener: OnDataListener? = null
 
+    /**
+     * 串口连接
+     */
     fun connect() {
         if (isConnect()) return
         try {
             serialPortClient.connect()
         } catch (e: Exception) {
             logger.log("串口(${devicePath}:${baudRate})连接失败：${e.message}")
-            reconnect()
+            onConnectListener?.onDisconnect(devicePath, e)
             return
         }
         setConnected(true)
-        startRead()
-        startSend()
-
         logger.log("串口连接成功")
-        sendQueue.clear()
-        responseProcesses.clear()
-        onConnectListener?.onConnect(devicePath)
-
+        try {
+            dataJob.start(sendAction = {
+                sendAction()
+            }, readAction = {
+                readAction()
+            })
+            sendQueue.clear()
+            responseProcesses.clear()
+            onConnectListener?.onConnect(devicePath)
+        } catch (e: Exception) {
+            logger.log("读写线程启动失败：${e.message}")
+            onConnectListener?.onDisconnect(devicePath, e)
+        }
     }
 
     private fun setConnected(value: Boolean) {
@@ -121,57 +136,60 @@ class OkSerialClient private constructor(
     /**
      * 开启发送线程
      */
-    private fun startSend() {
-        if (sendJob?.isActive == true) return
+    private suspend fun sendAction() {
+        val request = sendQueue.last()
+        try {
+            serialPortClient.write(request.data)
+        } catch (e: IOException) {
+            // TODO: 回调失败
+        }
+        handler.post { onDataListener?.onRequest(request.data) }
+        try {
+            send@ while (isConnect() && isActive) {
+                delay(sendInterval)
+                clearTimeProcess()
 
-        sendJob = coroutineScope.launch {
-            try {
-                send@ while (isConnect() && isActive) {
-                    delay(sendInterval)
-                    clearTimeProcess()
-
-                    val request = sendQueue.lastOrNull()
-                    if (fileOutputStream == null || request == null) {
-                        continue@send
-                    }
-                    for (count in 0..request.maxRetries) {
-                        try {
-                            fileOutputStream?.let { output ->
-                                output.write(request.data)
-                                output.flush()
-                            }
-                            request.sendTime = System.currentTimeMillis()
-                            sendQueue.remove(request)
-                            addDataProcess(request)
-                            handler.post { onDataListener?.onRequest(request.data) }
-                            continue@send
-                        } catch (ex: IOException) {
-                            delay(request.retryInterval)
+                val request = sendQueue.lastOrNull()
+                if (fileOutputStream == null || request == null) {
+                    continue@send
+                }
+                for (count in 0..request.maxRetries) {
+                    try {
+                        fileOutputStream?.let { output ->
+                            output.write(request.data)
+                            output.flush()
                         }
-                    }
-                    sendQueue.remove(request)
-                    handler.post {
-                        request.response(
-                            SerialResponse(
-                                byteArrayOf(),
-                                ResponseState.SEND_FAIL
-                            )
-                        )
+                        request.sendTime = System.currentTimeMillis()
+                        sendQueue.remove(request)
+                        addDataProcess(request)
+                        handler.post { onDataListener?.onRequest(request.data) }
+                        continue@send
+                    } catch (ex: IOException) {
+                        delay(request.retryInterval)
                     }
                 }
-            } catch (ignore: CancellationException) {
-            } catch (ex: Exception) {
-                ex.printStackTrace()
-                setConnected(false)
-                reconnect()
+                sendQueue.remove(request)
+                handler.post {
+                    request.response(
+                        SerialResponse(
+                            byteArrayOf(),
+                            ResponseState.SEND_FAIL
+                        )
+                    )
+                }
             }
+        } catch (ignore: CancellationException) {
+        } catch (ex: Exception) {
+            ex.printStackTrace()
+            setConnected(false)
+            reconnect()
         }
     }
 
     /**
      * 开始读数据
      */
-    private fun startRead() {
+    private fun readAction() {
         if (readJob?.isActive == true) return
 
         readJob = coroutineScope.launch {
@@ -455,7 +473,7 @@ class OkSerialClient private constructor(
             this.stickPacketHandle = stickPacketHandle
         }
 
-        fun build(): OkSerialClient {
+        fun build(): OkSerialPort {
             require(devicePath != null) { "串口地址devicePath不能为空" }
             require(baudRate != null && baudRate!! > 0) { "串口波特率baudRate不能为空或者小于0" }
             require(flags >= 0) { "标识位不能小于0" }
@@ -467,7 +485,7 @@ class OkSerialClient private constructor(
             require(sendInterval >= 0) { "发送数据时间间隔不能小于0" }
             require(readInterval >= 0) { "读取数据时间间隔不能小于0" }
 
-            return OkSerialClient(
+            return OkSerialPort(
                 devicePath!!, baudRate!!, flags, dataBit, stopBit, parity, maxRetry, retryInterval,
                 sendInterval, readInterval, offlineIntervalSecond, logger, stickPacketHandle
             )
