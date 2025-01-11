@@ -1,8 +1,16 @@
-# 串口通信框架配置
+# 串口通信框架
 
-## 1. 配置 `dependencyResolutionManagement`
+## 功能：
+- 实现串口基本通信；
+- 一发多收，一发一收；
+- 超时重试；
+- 失败重试。
 
-在 `settings.gradle` 文件中配置 `dependencyResolutionManagement`，确保使用正确的仓库源。
+## 使用：
+
+### 依赖配置
+
+在 `build.gradle` 文件中添加以下配置：
 
 ```groovy
 dependencyResolutionManagement {
@@ -10,11 +18,9 @@ dependencyResolutionManagement {
     repositories {
         mavenCentral()
         maven { url 'https://jitpack.io' }
-    }
+    }  
 }
 
 dependencies {
     implementation 'com.github.chyi-blip:ok-serialport:Tag'
 }
-
-请确保将 Tag 替换为你所需要的版本标签，或者直接使用 latest.release 获取最新的版本。

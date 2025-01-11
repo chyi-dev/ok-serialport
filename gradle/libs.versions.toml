@@ -5,29 +5,32 @@ coreKtx = "1.10.1"
 junit = "4.13.2"
 junitVersion = "1.1.5"
 espressoCore = "3.5.1"
-lifecycleRuntimeKtx = "2.6.1"
-activityCompose = "1.8.0"
-composeBom = "2024.04.01"
 appcompat = "1.6.1"
 material = "1.10.0"
+viewmodel-ktx = "2.8.6"
+activity-ktx = "1.9.2"
+fragment-ktx = "1.8.3"
+lifecycle-ktx = "2.8.7"
+xlog = "1.11.1"
+autosize = "v1.2.1"
+brvah = "4.1.4"
+utilcodex = "1.31.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
-androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
-androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
-androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
-androidx-ui = { group = "androidx.compose.ui", name = "ui" }
-androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
-androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
-androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
-androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "viewmodel-ktx" }
+activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activity-ktx" }
+fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragment-ktx" }
+lifecycle-ktx =  { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle-ktx" }
+xlog = { group = "com.elvishew", name = "xlog", version.ref = "xlog" }
+autosize = { group = "com.github.JessYanCoding", name = "AndroidAutoSize", version.ref = "autosize" }
+brvah = { group = "io.github.cymchad", name = "BaseRecyclerViewAdapterHelper4", version.ref = "brvah" }
+utilcodex = { group = "com.blankj", name = "utilcodex", version.ref = "utilcodex" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
