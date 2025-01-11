@@ -6,19 +6,16 @@ import com.ok.serialport.data.Request
 import com.ok.serialport.data.ResponseProcess
 import com.ok.serialport.jni.SerialPortClient
 import com.ok.serialport.data.DataProcess
+import com.ok.serialport.exception.ReconnectFailException
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
 import com.ok.serialport.stick.AbsStickPacketHandle
 import com.ok.serialport.stick.BaseStickPacketHandle
 import com.ok.serialport.utils.SerialLogger
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.lang.NullPointerException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -40,7 +37,7 @@ class OkSerialPort private constructor(
     // 校验位：0 表示无校验位，1 表示奇校验，2 表示偶校验
     private val parity: Int,
     // 连接最大重试次数 需要大于0 =0 不重试
-    private val maxRetry: Int,
+    private val retryCount: Int,
     // 连接重试间隔
     private val retryInterval: Long,
     // 发送间隔
@@ -67,7 +64,9 @@ class OkSerialPort private constructor(
     }
     private val isConnected = AtomicBoolean(false)
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
-    private var reconnectJob: Job? = null
+
+    //重连次数
+    private var retryTimes = 0
 
     // 串口连接监听
     private var onConnectListener: OnConnectListener? = null
@@ -85,6 +84,7 @@ class OkSerialPort private constructor(
         } catch (e: Exception) {
             logger.log("串口(${devicePath}:${baudRate})连接失败：${e.message}")
             onConnectListener?.onDisconnect(devicePath, e)
+            reconnect()
             return
         }
         setConnected(true)
@@ -92,9 +92,11 @@ class OkSerialPort private constructor(
         try {
             dataProcess.start(coroutineScope)
             onConnectListener?.onConnect(devicePath)
+            retryTimes = 0
         } catch (e: Exception) {
             logger.log("读写线程启动失败：${e.message}")
             onConnectListener?.onDisconnect(devicePath, e)
+            reconnect()
         }
     }
 
@@ -168,21 +170,14 @@ class OkSerialPort private constructor(
      * 重连
      */
     private fun reconnect() {
-        if (reconnectJob?.isActive == true) return
-        reconnectJob = coroutineScope.launch {
-            var count = 0
-            while (!isConnect() && isActive && (count < maxRetry || maxRetry > MAX_RETRY_COUNT)) {
-                logger.log("连接失败，$retryInterval ms 后重试 (${count + 1} / $maxRetry)")
-                var tempInterval = retryInterval
-                if (count > 10) {
-                    tempInterval *= (count + 10 / 10)
-                }
-                delay(tempInterval) // 重连间隔
-                connect()
-                count++
-            }
-            if (!isConnect()) {
-                onConnectListener?.onDisconnect(devicePath, Exception("开启失败"))
+        coroutineScope.launch {
+            delay(retryInterval)
+            logger.log("开始重连，进度：${retryCount + 1} / $retryCount")
+            connect()
+            retryTimes++
+            delay(100)
+            if (retryTimes >= retryCount && !isConnect()) {
+                onConnectListener?.onDisconnect(devicePath, ReconnectFailException("重连失败"))
             }
         }
     }
@@ -191,16 +186,14 @@ class OkSerialPort private constructor(
      * 断开串口连接
      */
     fun disconnect() {
-        reconnectJob?.cancel(cause = CancellationException("Reconnect canceled"))
         dataProcess.cancel()
-        reconnectJob = null
         if (isConnect()) {
             serialPortClient.disconnect()
             setConnected(false)
         }
     }
 
-    class Builder() {
+    class Builder {
         // 串口地址
         private var devicePath: String? = null
 
@@ -236,8 +229,7 @@ class OkSerialPort private constructor(
         private var offlineIntervalSecond: Int = 0
 
         // 日志
-        private var logger: com.ok.serialport.utils.SerialLogger =
-            com.ok.serialport.utils.SerialLogger()
+        private var logger: SerialLogger = SerialLogger()
 
         // 串口粘包处理
         private var stickPacketHandle: AbsStickPacketHandle = BaseStickPacketHandle()
@@ -302,9 +294,9 @@ class OkSerialPort private constructor(
             require(stopBit >= 0) { "停止位不能小于0" }
             require(parity >= 0) { "校验位不能小于0" }
             require(maxRetry >= 0) { "重试次数不能小于0" }
-            require(retryInterval >= 0) { "重试时间间隔不能小于0" }
-            require(sendInterval >= 0) { "发送数据时间间隔不能小于0" }
-            require(readInterval >= 0) { "读取数据时间间隔不能小于0" }
+            require(retryInterval >= 500) { "重试时间间隔不能小于500毫秒" }
+            require(sendInterval >= 100) { "发送数据时间间隔不能小于100毫秒" }
+            require(readInterval >= 1) { "读取数据时间间隔不能小于1毫秒" }
 
             return OkSerialPort(
                 devicePath!!, baudRate!!, flags, dataBit, stopBit, parity, maxRetry, retryInterval,

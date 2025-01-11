@@ -4,7 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.ok.serialport.OkSerialPort
-import com.ok.serialport.exception.SerialPortTimeoutException
+import com.ok.serialport.exception.ResponseTimeoutException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- *
+ * 串口数据处理
  * @author Leyi
  * @date 2025/1/10 16:17
  */
@@ -173,7 +173,7 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
                 null
             }
             it.onResponseListener?.onFailure(
-                request, SerialPortTimeoutException("响应超时")
+                request, ResponseTimeoutException("响应超时")
             )
         }
         timeoutRequests.clear()

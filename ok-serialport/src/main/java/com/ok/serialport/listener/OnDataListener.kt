@@ -1,7 +1,7 @@
 package com.ok.serialport.listener
 
 /**
- *
+ * 全局数据监听，仅最后设置处生效
  * @author Leyi
  * @date 2025/1/10 16:12
  */

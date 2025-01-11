@@ -7,6 +7,6 @@ import java.lang.Exception
  * @author Leyi
  * @date 2025/1/10 16:46
  */
-class SerialPortTimeoutException(message: String) : Exception(message) {
+class ResponseTimeoutException(message: String) : Exception(message) {
 
 }

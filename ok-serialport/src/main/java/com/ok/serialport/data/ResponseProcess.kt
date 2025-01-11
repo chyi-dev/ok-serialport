@@ -3,7 +3,7 @@ package com.ok.serialport.data
 import com.ok.serialport.listener.OnResponseListener
 
 /**
- *
+ * 响应处理
  * @author Leyi
  * @date 2025/1/10 16:35
  */
