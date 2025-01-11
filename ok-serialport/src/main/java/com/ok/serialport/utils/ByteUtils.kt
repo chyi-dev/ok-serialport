@@ -1,4 +1,4 @@
-package com.ok.serialport.newer.utils
+package com.ok.serialport.utils
 
 /**
  * byte工具类

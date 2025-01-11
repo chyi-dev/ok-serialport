@@ -1,4 +1,4 @@
-package com.ok.serialport
+package com.ok.serialport.utils
 
 import android.util.Log
 

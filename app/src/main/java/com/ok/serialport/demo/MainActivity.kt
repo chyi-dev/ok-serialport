@@ -16,14 +16,12 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.blankj.utilcode.util.TimeUtils
 import com.chad.library.adapter4.BaseQuickAdapter
 import com.chad.library.adapter4.viewholder.QuickViewHolder
-import com.ok.serialport.OkSerialClient
+import com.ok.serialport.OkSerialPort
+import com.ok.serialport.data.Request
 import com.ok.serialport.demo.databinding.ActivityMainBinding
-import com.ok.serialport.enums.ResponseState
 import com.ok.serialport.jni.SerialPortFinder
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
-import com.ok.serialport.model.SerialRequest
-import com.ok.serialport.model.SerialResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -46,7 +44,7 @@ class MainActivity : AppCompatActivity() {
     }
     private var devicePath: String? = null
     private var baudRate: Int? = null
-    private var serialClient: OkSerialClient? = null
+    private var serialClient: OkSerialPort? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,26 +82,8 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "请输入合理命令", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            val request = object : SerialRequest(byteArr) {
-                override fun process(bytes: ByteArray): Boolean {
-                    return true
-                }
-
-                override fun response(response: SerialResponse) {
-                    if (response.state != ResponseState.SUCCESS) {
-                        adapter.add(
-                            LogBean(
-                                TimeUtils.getNowString(),
-                                devicePath!!,
-                                "响应",
-                                response.state.name
-                            )
-                        )
-                    }
-                }
-            }
-            request.isTimeoutRetry = true
-            serialClient?.send(request)
+            val request = Request(byteArr)
+            serialClient?.request(request)
         }
 
         binding.btnTimingSend.setOnClickListener {
@@ -133,25 +113,8 @@ class MainActivity : AppCompatActivity() {
                 while (isActive) {
                     delay(1000)
                     withContext(Dispatchers.Main) {
-                        val request = object : SerialRequest(byteArr) {
-                            override fun process(bytes: ByteArray): Boolean {
-                                return true
-                            }
-
-                            override fun response(response: SerialResponse) {
-                                if (response.state != ResponseState.SUCCESS) {
-                                    adapter.add(
-                                        LogBean(
-                                            TimeUtils.getNowString(),
-                                            devicePath!!,
-                                            "响应",
-                                            response.state.name
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                        serialClient?.send(request)
+                        val request = Request(byteArr)
+                        serialClient?.request(request)
                     }
                 }
             }
@@ -170,7 +133,7 @@ class MainActivity : AppCompatActivity() {
             binding.viewOpenState.setBackgroundColor(Color.RED)
             return
         }
-        serialClient = OkSerialClient.Builder()
+        serialClient = OkSerialPort.Builder()
             .devicePath(devicePath!!)
             .baudRate(baudRate!!)
             .build()
@@ -181,7 +144,7 @@ class MainActivity : AppCompatActivity() {
                 Log.i("Ok-Serial", "${devicePath}连接成功")
             }
 
-            override fun onDisconnect(devicePath: String, errorMag: String?) {
+            override fun onDisconnect(devicePath: String, errorMag: Throwable?) {
                 binding.tvOpenState.text = "开启"
                 binding.viewOpenState.setBackgroundColor(Color.RED)
                 Log.i("Ok-Serial", "${devicePath}连接失败：${errorMag}")

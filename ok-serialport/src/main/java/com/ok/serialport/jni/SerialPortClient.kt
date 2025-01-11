@@ -1,7 +1,6 @@
-package com.ok.serialport.newer
+package com.ok.serialport.jni
 
-import com.ok.serialport.SerialLogger
-import com.ok.serialport.jni.SerialPort
+import com.ok.serialport.utils.SerialLogger
 import java.io.File
 import java.io.FileDescriptor
 import java.io.FileInputStream
@@ -41,12 +40,15 @@ internal class SerialPortClient(
     fun connect() {
         if (!checkPermission()) {
             throw SecurityException("当前设备串口读写权限不足")
+            logger.log("${devicePath}-${baudRate}串口开启失败：读写权限不足")
         }
         try {
             fileDescriptor = open(devicePath, baudRate, flags, dataBit, stopBit, parity)
             fileInputStream = FileInputStream(fileDescriptor)
             fileOutputStream = FileOutputStream(fileDescriptor)
+            logger.log("${devicePath}-${baudRate}串口开启成功")
         } catch (e: Exception) {
+            logger.log("${devicePath}-${baudRate}串口开启失败")
             throw e
         }
     }
@@ -99,7 +101,9 @@ internal class SerialPortClient(
             fileOutputStream?.close()
             fileInputStream = null
             fileOutputStream = null
+            logger.log("${devicePath}-${baudRate}串口关闭成功")
         } catch (e: Exception) {
+            logger.log("${devicePath}-${baudRate}串口关闭异常：${e.message}")
             e.printStackTrace()
         }
     }

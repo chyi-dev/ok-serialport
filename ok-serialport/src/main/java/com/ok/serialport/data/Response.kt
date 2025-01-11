@@ -1,6 +1,6 @@
-package com.ok.serialport.newer.data
+package com.ok.serialport.data
 
-import com.ok.serialport.newer.utils.ByteUtils
+import com.ok.serialport.utils.ByteUtils
 
 /**
  *
@@ -8,6 +8,8 @@ import com.ok.serialport.newer.utils.ByteUtils
  * @date 2025/1/10 16:35
  */
 class Response(private val data: ByteArray) {
+
+    var request: Request? = null
 
     /**
      * 数据转Hex
