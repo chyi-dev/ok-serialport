@@ -7,7 +7,7 @@ import com.ok.serialport.utils.ByteUtils
  * @author Leyi
  * @date 2025/1/10 16:35
  */
-class Response(private val data: ByteArray) {
+class Response(val data: ByteArray) {
 
     /**
      * 对应请求 [Request]

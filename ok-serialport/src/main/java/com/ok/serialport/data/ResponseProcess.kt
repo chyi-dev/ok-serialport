@@ -27,7 +27,7 @@ abstract class ResponseProcess {
      * @param responseRule
      * @return
      */
-    fun addResponseRule(responseRule: ResponseRule): ResponseProcess {
+    open fun addResponseRule(responseRule: ResponseRule): ResponseProcess {
         responseRules.add(responseRule)
         return this
     }
@@ -47,7 +47,7 @@ abstract class ResponseProcess {
      * @param listener
      * @return
      */
-    fun setOnResponseListener(listener: OnResponseListener): ResponseProcess {
+    open fun onResponseListener(listener: OnResponseListener): ResponseProcess {
         this.onResponseListener = listener
         return this
     }
@@ -58,7 +58,7 @@ abstract class ResponseProcess {
      * @param count
      * @return
      */
-    fun setResponseCount(count: Int): ResponseProcess {
+    open fun responseCount(count: Int): ResponseProcess {
         this.count = count
         return this
     }

@@ -1,5 +1,6 @@
 package com.ok.serialport.data
 
+import com.ok.serialport.listener.OnResponseListener
 import com.ok.serialport.utils.ByteUtils
 
 /**
@@ -40,7 +41,7 @@ class Request(internal val data: ByteArray) : ResponseProcess() {
      * @param timeout
      * @return
      */
-    fun setTimeout(timeout: Long): Request {
+    fun timeout(timeout: Long): Request {
         this.timeout = timeout
         return this
     }
@@ -51,8 +52,41 @@ class Request(internal val data: ByteArray) : ResponseProcess() {
      * @param count
      * @return
      */
-    fun setTimeoutRetry(count: Int): Request {
+    fun timeoutRetry(count: Int): Request {
         this.timeoutRetry = count
+        return this
+    }
+
+    /**
+     * 添加 MatchRule
+     *
+     * @param responseRule
+     * @return
+     */
+    override fun addResponseRule(responseRule: ResponseRule): Request {
+        super.addResponseRule(responseRule)
+        return this
+    }
+
+    /**
+     * 设置响应监听 OnResponseListener
+     *
+     * @param listener
+     * @return
+     */
+    override fun onResponseListener(listener: OnResponseListener): Request {
+        super.onResponseListener(listener)
+        return this
+    }
+
+    /**
+     * 设置响应次数
+     *
+     * @param count
+     * @return
+     */
+    override fun responseCount(count: Int): Request {
+        super.responseCount(count)
         return this
     }
 

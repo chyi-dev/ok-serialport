@@ -130,6 +130,7 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
                     break
                 }
             } catch (e: Exception) {
+                okSerialPort.logger.log("匹配条件存在异常：${e.message}")
                 continue
             }
         }
@@ -179,6 +180,9 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
         timeoutRequests.clear()
     }
 
+    /**
+     * 取消
+     */
     fun cancel() {
         readJob?.cancel(cause = CancellationException("Read job canceled"))
         sendJob?.cancel(cause = CancellationException("Send job canceled"))
