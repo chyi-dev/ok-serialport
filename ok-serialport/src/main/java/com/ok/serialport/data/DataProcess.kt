@@ -123,15 +123,10 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
         while (iterator.hasNext()) {
             val process = iterator.next()
             if (isTimeout(process)) continue
-            try {
-                if (process.match(receive)) {
-                    matchProcess = process
-                    timeoutRequests.remove(process)
-                    break
-                }
-            } catch (e: Exception) {
-                okSerialPort.logger.log("匹配条件存在异常：${e.message}")
-                continue
+            if (process.match(receive)) {
+                matchProcess = process
+                timeoutRequests.remove(process)
+                break
             }
         }
         return matchProcess
@@ -159,14 +154,10 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
         try {
             val response = Response(receive)
             response.request = request
-            handler.post {
-                matchProcess.onResponseListener?.onResponse(response)
-            }
+            handler.post { matchProcess.onResponseListener?.onResponse(response) }
             removeProcess(matchProcess)
         } catch (e: Exception) {
-            handler.post {
-                matchProcess.onResponseListener?.onFailure(request, e)
-            }
+            handler.post { matchProcess.onResponseListener?.onFailure(request, e) }
             removeProcess(matchProcess)
         }
     }
