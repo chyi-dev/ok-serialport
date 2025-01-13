@@ -77,7 +77,7 @@ open class SerialPort(
      * @param file File
      * @return Boolean 权限修改是否成功
      */
-    fun chmod777(file: File?): Boolean {
+    private fun chmod777(file: File?): Boolean {
         if (file == null || file.exists()) {
             return false
         }
@@ -146,7 +146,7 @@ open class SerialPort(
     }
 
     // 打开串口
-    external fun open(
+    private external fun open(
         path: String,
         baudRate: Int,
         flags: Int,
@@ -156,6 +156,6 @@ open class SerialPort(
     ): FileDescriptor
 
     // 关闭串口
-    external fun close()
+    private external fun close()
 
 }
