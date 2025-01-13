@@ -13,7 +13,7 @@ import java.io.InputStream
  * @author Leyi
  * @date 2025/1/10 15:29
  */
-internal class SerialPortClient(
+open class SerialPortClient(
     // 串口地址
     private val devicePath: String,
     // 波特率
@@ -88,7 +88,7 @@ internal class SerialPortClient(
     /**
      * 关闭
      */
-    fun disconnect() {
+    open fun disconnect() {
         try {
             if (fileDescriptor != null) {
                 close()

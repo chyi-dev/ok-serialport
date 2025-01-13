@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity() {
             if (byteArr != null) {
                 job = lifecycleScope.launch {
                     while (isActive) {
-                        delay(1000)
+                        delay(500)
                         withContext(Dispatchers.Main) {
                             val request = Request(byteArr)
                             serialClient?.request(request)
@@ -112,7 +112,8 @@ class MainActivity : AppCompatActivity() {
                         override fun match(request: Request?, receive: ByteArray): Boolean {
                             return receive.size >= 9 && receive[3] == 0x1E.toByte()
                         }
-                    }).onResponseListener(object : OnResponseListener {
+                    })
+                    .onResponseListener(object : OnResponseListener {
                         override fun onResponse(response: Response) {
                             addLog("发送", ByteUtils.byteArrToHexStr(response.data))
                         }
@@ -139,7 +140,8 @@ class MainActivity : AppCompatActivity() {
                         override fun match(request: Request?, receive: ByteArray): Boolean {
                             return receive.size >= 9 && receive[3] == 0x1E.toByte()
                         }
-                    }).onResponseListener(object : OnResponseListener {
+                    })
+                    .onResponseListener(object : OnResponseListener {
                         override fun onResponse(response: Response) {
                             addLog("发送", ByteUtils.byteArrToHexStr(response.data))
                         }
@@ -207,6 +209,7 @@ class MainActivity : AppCompatActivity() {
         serialClient = OkSerialPort.Builder()
             .devicePath(devicePath!!)
             .baudRate(baudRate!!)
+            .sendInterval(300)
             .addResponseRule(object : ResponseRule {
                 override fun match(request: Request?, receive: ByteArray): Boolean {
                     request?.let {
@@ -233,10 +236,12 @@ class MainActivity : AppCompatActivity() {
 
         serialClient?.addDataListener(object : OnDataListener {
             override fun onRequest(data: ByteArray) {
+                Log.i("Ok-Serial", "onRequest:${ByteUtils.byteArrToHexStr(data)}")
                 addLog("发送", ByteUtils.byteArrToHexStr(data))
             }
 
             override fun onResponse(data: ByteArray) {
+                Log.i("Ok-Serial", "onResponse:${ByteUtils.byteArrToHexStr(data)}")
                 addLog("响应", ByteUtils.byteArrToHexStr(data))
             }
         })

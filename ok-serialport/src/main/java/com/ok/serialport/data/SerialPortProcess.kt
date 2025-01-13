@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import com.ok.serialport.OkSerialPort
 import com.ok.serialport.exception.ResponseTimeoutException
+import com.ok.serialport.jni.SerialPortClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,7 +20,15 @@ import kotlin.coroutines.cancellation.CancellationException
  * @author Leyi
  * @date 2025/1/10 16:17
  */
-class DataProcess(private val okSerialPort: OkSerialPort) {
+class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPortClient(
+    okSerialPort.devicePath,
+    okSerialPort.baudRate,
+    okSerialPort.flags,
+    okSerialPort.dataBit,
+    okSerialPort.stopBit,
+    okSerialPort.parity,
+    okSerialPort.logger
+) {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var coroutineScope: CoroutineScope
     private var sendJob: Job? = null
@@ -60,7 +69,7 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
                     val request = readyRequests.pollLast()
                     request?.let {
                         try {
-                            okSerialPort.serialPortClient.write(request.data)
+                            write(request.data)
                             handler.post { okSerialPort.onDataListener?.onRequest(request.data) }
                             addRunningRequest(request)
                         } catch (e: IOException) {
@@ -95,7 +104,7 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
                 while (okSerialPort.isConnect() && isActive) {
                     delay(okSerialPort.readInterval)
                     val receive = try {
-                        okSerialPort.serialPortClient.readStream()?.let {
+                        readStream()?.let {
                             return@let okSerialPort.stickPacketHandle.execute(it)
                         }
                     } catch (e: Exception) {
@@ -134,12 +143,10 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
                     timeoutRequests.remove(process)
                     break
                 }
-            } else {
-                if (match(request, receive)) {
-                    matchProcess = process
-                    timeoutRequests.remove(process)
-                    break
-                }
+            } else if (match(request, receive)) {
+                matchProcess = process
+                timeoutRequests.remove(process)
+                break
             }
         }
         return matchProcess
@@ -231,8 +238,9 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
     /**
      * 取消
      */
-    fun cancel() {
+   override fun disconnect() {
         readJob?.cancel(cause = CancellationException("Read job canceled"))
         sendJob?.cancel(cause = CancellationException("Send job canceled"))
+        super.disconnect()
     }
 }

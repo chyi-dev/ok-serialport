@@ -1,13 +1,12 @@
 package com.ok.serialport
 
 import androidx.annotation.IntRange
-import com.ok.serialport.data.DataProcess
 import com.ok.serialport.data.Request
 import com.ok.serialport.data.ResponseProcess
 import com.ok.serialport.data.ResponseRule
+import com.ok.serialport.data.SerialPortProcess
 import com.ok.serialport.exception.ReconnectFailException
 import com.ok.serialport.jni.SerialPort
-import com.ok.serialport.jni.SerialPortClient
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
 import com.ok.serialport.stick.AbsStickPacketHandle
@@ -26,17 +25,17 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class OkSerialPort private constructor(
     // 串口地址
-    private val devicePath: String,
+    internal val devicePath: String,
     // 波特率
-    private val baudRate: Int,
+    internal val baudRate: Int,
     // 标志位
-    private val flags: Int,
+    internal val flags: Int,
     // 数据位
-    private val dataBit: Int,
+    internal val dataBit: Int,
     // 停止位
-    private val stopBit: Int,
+    internal val stopBit: Int,
     // 校验位：0 表示无校验位，1 表示奇校验，2 表示偶校验
-    private val parity: Int,
+    internal val parity: Int,
     // 连接最大重试次数 需要大于0 =0 不重试
     private val retryCount: Int,
     // 连接重试间隔
@@ -58,11 +57,8 @@ class OkSerialPort private constructor(
         private const val MAX_RETRY_COUNT = 100
     }
 
-    internal val serialPortClient: SerialPortClient by lazy {
-        SerialPortClient(devicePath, baudRate, flags, dataBit, stopBit, parity, logger)
-    }
-    private val dataProcess by lazy {
-        DataProcess(this)
+    private val serialPortProcess by lazy {
+        SerialPortProcess(this)
     }
     private val isConnected = AtomicBoolean(false)
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -82,7 +78,7 @@ class OkSerialPort private constructor(
     fun connect() {
         if (isConnect()) return
         try {
-            serialPortClient.connect()
+            serialPortProcess.connect()
         } catch (e: Exception) {
             logger.log("串口(${devicePath}:${baudRate})连接失败：${e.message}")
             onConnectListener?.onDisconnect(devicePath, e)
@@ -92,7 +88,7 @@ class OkSerialPort private constructor(
         setConnected(true)
         logger.log("串口(${devicePath}:${baudRate})连接成功")
         try {
-            dataProcess.start(coroutineScope)
+            serialPortProcess.start(coroutineScope)
             onConnectListener?.onConnect(devicePath)
             retryTimes = 0
         } catch (e: Exception) {
@@ -114,7 +110,7 @@ class OkSerialPort private constructor(
      */
     fun request(request: Request) {
         if (isConnect()) {
-            dataProcess.addRequest(request)
+            serialPortProcess.addRequest(request)
         }
     }
 
@@ -123,14 +119,14 @@ class OkSerialPort private constructor(
      * @param request SerialRequest
      */
     fun cancel(request: Request): Boolean {
-        return dataProcess.cancelRequest(request)
+        return serialPortProcess.cancelRequest(request)
     }
 
     /**
      * 添加数据数据处理器
      */
     fun addProcess(process: ResponseProcess) {
-        dataProcess.addResponseProcess(process)
+        serialPortProcess.addResponseProcess(process)
     }
 
     /**
@@ -138,7 +134,7 @@ class OkSerialPort private constructor(
      * 针对无限次重试
      */
     fun removeProcess(process: ResponseProcess) {
-        dataProcess.removeResponseProcess(process)
+        serialPortProcess.removeResponseProcess(process)
     }
 
     /**
@@ -189,9 +185,8 @@ class OkSerialPort private constructor(
      * 断开串口连接
      */
     fun disconnect() {
-        dataProcess.cancel()
         if (isConnect()) {
-            serialPortClient.disconnect()
+            serialPortProcess.disconnect()
             setConnected(false)
         }
     }
