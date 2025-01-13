@@ -4,7 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import com.ok.serialport.OkSerialPort
 import com.ok.serialport.exception.ResponseTimeoutException
-import com.ok.serialport.jni.SerialPortClient
+import com.ok.serialport.jni.SerialPort
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -20,7 +20,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * @author Leyi
  * @date 2025/1/10 16:17
  */
-class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPortClient(
+class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     okSerialPort.devicePath,
     okSerialPort.baudRate,
     okSerialPort.flags,
