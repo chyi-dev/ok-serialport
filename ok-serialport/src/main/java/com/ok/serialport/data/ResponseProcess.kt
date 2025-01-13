@@ -73,15 +73,15 @@ abstract class ResponseProcess {
         return this
     }
 
-    internal fun match(receive: ByteArray): Boolean {
+    internal fun match(request: Request?, receive: ByteArray): Boolean {
         try {
             responseRules.forEach {
-                val isMatch = it.match(receive)
+                val isMatch = it.match(request, receive)
                 if (!isMatch) {
                     return false
                 }
             }
-        } catch (e:Exception) {
+        } catch (e: Exception) {
             return false
         }
         return true

@@ -76,7 +76,7 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
     }
 
     private fun addRunningRequest(request: Request) {
-        if (request.responseRules.isNotEmpty()) {
+        if (request.responseRules.isNotEmpty() || okSerialPort.responseRules.isNotEmpty()) {
             request.sendTime = System.currentTimeMillis()
             if (!runningRequests.contains(request)) {
                 runningRequests.add(request)
@@ -123,10 +123,23 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
         while (iterator.hasNext()) {
             val process = iterator.next()
             if (isTimeout(process)) continue
-            if (process.match(receive)) {
-                matchProcess = process
-                timeoutRequests.remove(process)
-                break
+            val request = if (process is Request) {
+                process
+            } else {
+                null
+            }
+            if (process.isResponseRule()) {
+                if (process.match(request, receive)) {
+                    matchProcess = process
+                    timeoutRequests.remove(process)
+                    break
+                }
+            } else {
+                if (match(request, receive)) {
+                    matchProcess = process
+                    timeoutRequests.remove(process)
+                    break
+                }
             }
         }
         return matchProcess
@@ -181,6 +194,20 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
             }
         }
         timeoutRequests.clear()
+    }
+
+    private fun match(request: Request?, receive: ByteArray): Boolean {
+        try {
+            okSerialPort.responseRules.forEach {
+                val isMatch = it.match(request, receive)
+                if (!isMatch) {
+                    return false
+                }
+            }
+        } catch (e: Exception) {
+            return false
+        }
+        return true
     }
 
     private fun isTimeout(process: ResponseProcess?): Boolean {

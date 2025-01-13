@@ -1,12 +1,13 @@
 package com.ok.serialport
 
 import androidx.annotation.IntRange
-import com.ok.serialport.jni.SerialPort
+import com.ok.serialport.data.DataProcess
 import com.ok.serialport.data.Request
 import com.ok.serialport.data.ResponseProcess
-import com.ok.serialport.jni.SerialPortClient
-import com.ok.serialport.data.DataProcess
+import com.ok.serialport.data.ResponseRule
 import com.ok.serialport.exception.ReconnectFailException
+import com.ok.serialport.jni.SerialPort
+import com.ok.serialport.jni.SerialPortClient
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
 import com.ok.serialport.stick.AbsStickPacketHandle
@@ -49,7 +50,8 @@ class OkSerialPort private constructor(
     // 日志
     internal val logger: SerialLogger,
     // 串口粘包处理
-    internal val stickPacketHandle: AbsStickPacketHandle
+    internal val stickPacketHandle: AbsStickPacketHandle,
+    internal val responseRules: MutableList<ResponseRule>
 ) : SerialPort() {
     companion object {
         //超过最大限制为无限次重试，重试时间间隔增加
@@ -235,6 +237,9 @@ class OkSerialPort private constructor(
         // 串口粘包处理
         private var stickPacketHandle: AbsStickPacketHandle = BaseStickPacketHandle()
 
+        // 响应匹配规则
+        private var responseRules = mutableListOf<ResponseRule>()
+
         fun devicePath(devicePath: String) = apply {
             this.devicePath = devicePath
         }
@@ -287,6 +292,10 @@ class OkSerialPort private constructor(
             this.stickPacketHandle = stickPacketHandle
         }
 
+        fun addResponseRule(rule: ResponseRule) = apply {
+            this.responseRules.add(rule)
+        }
+
         fun build(): OkSerialPort {
             require(devicePath != null) { "串口地址devicePath不能为空" }
             require(baudRate != null && baudRate!! > 0) { "串口波特率baudRate不能为空或者小于0" }
@@ -301,7 +310,8 @@ class OkSerialPort private constructor(
 
             return OkSerialPort(
                 devicePath!!, baudRate!!, flags, dataBit, stopBit, parity, maxRetry, retryInterval,
-                sendInterval, readInterval, offlineIntervalSecond, logger, stickPacketHandle
+                sendInterval, readInterval, offlineIntervalSecond, logger, stickPacketHandle,
+                responseRules
             )
         }
     }

@@ -13,6 +13,6 @@ interface ResponseRule {
      * @param receive 数据
      * @return 匹配结果
      */
-    fun match(receive: ByteArray): Boolean
+    fun match(request: Request?, receive: ByteArray): Boolean
 
 }

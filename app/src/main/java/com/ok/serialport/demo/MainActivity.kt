@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity() {
             if (byteArr != null) {
                 val request = Request(byteArr)
                     .addResponseRule(object : ResponseRule {
-                        override fun match(receive: ByteArray): Boolean {
+                        override fun match(request: Request?, receive: ByteArray): Boolean {
                             return receive.size >= 9 && receive[3] == 0x1E.toByte()
                         }
                     }).onResponseListener(object : OnResponseListener {
@@ -136,7 +136,7 @@ class MainActivity : AppCompatActivity() {
                 val request = Request(byteArr)
                     .timeoutRetry(3)
                     .addResponseRule(object : ResponseRule {
-                        override fun match(receive: ByteArray): Boolean {
+                        override fun match(request: Request?, receive: ByteArray): Boolean {
                             return receive.size >= 9 && receive[3] == 0x1E.toByte()
                         }
                     }).onResponseListener(object : OnResponseListener {
@@ -162,11 +162,7 @@ class MainActivity : AppCompatActivity() {
             if (byteArr != null) {
                 val request = Request(byteArr)
                     .responseCount(3)
-                    .addResponseRule(object : ResponseRule {
-                        override fun match(receive: ByteArray): Boolean {
-                            return receive.size >= 9 && receive[3] == 0x1E.toByte()
-                        }
-                    }).onResponseListener(object : OnResponseListener {
+                    .onResponseListener(object : OnResponseListener {
                         override fun onResponse(response: Response) {
                             Log.i("Ok-Serial", "response onResponse:${response.toHex()}")
                         }
@@ -211,6 +207,15 @@ class MainActivity : AppCompatActivity() {
         serialClient = OkSerialPort.Builder()
             .devicePath(devicePath!!)
             .baudRate(baudRate!!)
+            .addResponseRule(object : ResponseRule {
+                override fun match(request: Request?, receive: ByteArray): Boolean {
+                    request?.let {
+                        return receive.size >= 6 && it.data()[3] == receive[3]
+                    } ?: run {
+                        return false
+                    }
+                }
+            })
             .build()
         serialClient?.addConnectListener(object : OnConnectListener {
             override fun onConnect(devicePath: String) {
