@@ -13,7 +13,6 @@ afterEvaluate {
         publications {
             create<MavenPublication>("release") {
                 groupId = (group.toString())
-                artifactId = "ok-serialport"
                 version = version
             }
         }
