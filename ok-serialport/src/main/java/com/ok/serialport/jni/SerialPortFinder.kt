@@ -1,8 +1,8 @@
 package com.ok.serialport.jni
 
 import android.util.Log
-import com.ok.serialport.model.Device
-import com.ok.serialport.model.Driver
+import com.ok.serialport.jni.model.Device
+import com.ok.serialport.jni.model.Driver
 import java.io.File
 import java.io.FileReader
 import java.io.IOException

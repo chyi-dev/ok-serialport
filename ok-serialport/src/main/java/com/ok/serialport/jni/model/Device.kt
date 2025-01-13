@@ -1,4 +1,4 @@
-package com.ok.serialport.model
+package com.ok.serialport.jni.model
 
 import java.io.File
 import java.io.Serializable

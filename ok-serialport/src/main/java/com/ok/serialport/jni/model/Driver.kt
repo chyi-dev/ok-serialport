@@ -1,4 +1,4 @@
-package com.ok.serialport.model
+package com.ok.serialport.jni.model
 
 import android.util.Log
 import java.io.File

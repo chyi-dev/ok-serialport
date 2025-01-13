@@ -1,10 +1,11 @@
 package com.ok.serialport.listener
 
 /**
- * 数据全局监听
+ * 全局数据监听，仅最后设置处生效
+ * @author Leyi
+ * @date 2025/1/10 16:12
  */
 interface OnDataListener {
-
     /**
      * 数据请求监听
      * @param data ByteArray
