@@ -9,15 +9,15 @@ version = "1.0.2"
 
 
 afterEvaluate {
-     publishing {
-       publications {
-         create<MavenPublication>("release") {
-           groupId = (group.toString())
-           artifactId = "ok-serialport"
-           version = version
-          }
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                groupId = (group.toString())
+                artifactId = "ok-serialport"
+                version = version
+            }
         }
-      }
+    }
 }
 
 android {
