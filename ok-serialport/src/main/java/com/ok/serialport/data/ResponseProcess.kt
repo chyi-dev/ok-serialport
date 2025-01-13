@@ -63,6 +63,16 @@ abstract class ResponseProcess {
         return this
     }
 
+    /**
+     * 无限响应
+     *
+     * @return
+     */
+    open fun infiniteResponse(): ResponseProcess {
+        this.count = MAX_COUNT
+        return this
+    }
+
     internal fun match(receive: ByteArray): Boolean {
         responseRules.forEach {
             val isMatch = it.match(receive)
@@ -84,6 +94,7 @@ abstract class ResponseProcess {
         }
         count -= 1
         if (count <= 0) {
+            count = 0
             return true
         }
         return false

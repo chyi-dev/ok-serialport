@@ -88,7 +88,7 @@ class OkSerialPort private constructor(
             return
         }
         setConnected(true)
-        logger.log("串口连接成功")
+        logger.log("串口(${devicePath}:${baudRate})连接成功")
         try {
             dataProcess.start(coroutineScope)
             onConnectListener?.onConnect(devicePath)
@@ -133,6 +133,7 @@ class OkSerialPort private constructor(
 
     /**
      * 移除数据处理
+     * 针对无限次重试
      */
     fun removeProcess(process: ResponseProcess) {
         dataProcess.removeResponseProcess(process)
@@ -217,10 +218,10 @@ class OkSerialPort private constructor(
         private var maxRetry: Int = 3
 
         // 连接重试间隔
-        private var retryInterval: Long = 200L
+        private var retryInterval: Long = 1000L
 
         // 发送间隔
-        var sendInterval: Long = 100L
+        var sendInterval: Long = 300L
 
         // 读取间隔
         private var readInterval: Long = 50L
@@ -296,7 +297,7 @@ class OkSerialPort private constructor(
             require(maxRetry >= 0) { "重试次数不能小于0" }
             require(retryInterval >= 500) { "重试时间间隔不能小于500毫秒" }
             require(sendInterval >= 100) { "发送数据时间间隔不能小于100毫秒" }
-            require(readInterval >= 1) { "读取数据时间间隔不能小于1毫秒" }
+            require(readInterval >= 10) { "读取数据时间间隔不能小于10毫秒" }
 
             return OkSerialPort(
                 devicePath!!, baudRate!!, flags, dataBit, stopBit, parity, maxRetry, retryInterval,

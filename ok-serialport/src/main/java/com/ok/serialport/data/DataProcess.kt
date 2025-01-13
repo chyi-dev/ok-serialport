@@ -2,7 +2,6 @@ package com.ok.serialport.data
 
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import com.ok.serialport.OkSerialPort
 import com.ok.serialport.exception.ResponseTimeoutException
 import kotlinx.coroutines.CoroutineScope
@@ -11,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -24,7 +24,7 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
     private lateinit var coroutineScope: CoroutineScope
     private var sendJob: Job? = null
     private var readJob: Job? = null
-    private val readyRequests = ConcurrentLinkedQueue<Request>()
+    private val readyRequests = ConcurrentLinkedDeque<Request>()
     private val runningRequests = ConcurrentLinkedQueue<ResponseProcess>()
     private val timeoutRequests = mutableListOf<ResponseProcess>()
 
@@ -57,13 +57,17 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
             try {
                 while (okSerialPort.isConnect() && isActive) {
                     delay(okSerialPort.sendInterval)
-                    val request = readyRequests.poll()
-                    try {
-                        okSerialPort.serialPortClient.write(request.data)
-                        handler.post { okSerialPort.onDataListener?.onRequest(request.data) }
-                        addRunningRequest(request)
-                    } catch (e: IOException) {
-                        request.onResponseListener?.onFailure(request, e)
+                    val request = readyRequests.pollLast()
+                    request?.let {
+                        try {
+                            okSerialPort.serialPortClient.write(request.data)
+                            handler.post { okSerialPort.onDataListener?.onRequest(request.data) }
+                            addRunningRequest(request)
+                        } catch (e: IOException) {
+                            handler.post {
+                                request.onResponseListener?.onFailure(request, e)
+                            }
+                        }
                     }
                 }
             } catch (ignore: CancellationException) {
@@ -73,10 +77,14 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
 
     private fun addRunningRequest(request: Request) {
         if (request.responseRules.isNotEmpty()) {
-            request.sendTime = SystemClock.currentThreadTimeMillis()
-            runningRequests.add(request)
+            request.sendTime = System.currentTimeMillis()
+            if (!runningRequests.contains(request)) {
+                runningRequests.add(request)
+            }
         } else {
-            request.onResponseListener?.onFailure(request, NullPointerException("响应规则为空"))
+            handler.post {
+                request.onResponseListener?.onFailure(request, NullPointerException("响应规则为空"))
+            }
         }
     }
 
@@ -97,10 +105,12 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
                     }
                     if (receive != null && receive.isNotEmpty()) {
                         handler.post { okSerialPort.onDataListener?.onResponse(receive) }
-                        var matchRequest: ResponseProcess? = matchRequest(receive)
+                        val matchRequest: ResponseProcess? = matchRequest(receive)
                         response(matchRequest, receive)
-                        timeout()
+                    } else {
+                        matchTimeoutRequest()
                     }
+                    removeTimeoutRequest()
                 }
             } catch (ignore: CancellationException) {
             }
@@ -112,17 +122,7 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
         var matchProcess: ResponseProcess? = null
         while (iterator.hasNext()) {
             val process = iterator.next()
-            if (process is Request) {
-                val millis = SystemClock.currentThreadTimeMillis()
-                if (process.timeout > 0 && millis - process.sendTime > process.timeout) {
-                    if (process.deductTimeoutRetryCount()) {
-                        addRequest(process)
-                    } else {
-                        timeoutRequests.add(process)
-                    }
-                    continue
-                }
-            }
+            if (isTimeout(process)) continue
             try {
                 if (process.match(receive)) {
                     matchProcess = process
@@ -135,6 +135,14 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
             }
         }
         return matchProcess
+    }
+
+    private fun matchTimeoutRequest() {
+        val iterator = runningRequests.iterator()
+        while (iterator.hasNext()) {
+            val process = iterator.next()
+            isTimeout(process)
+        }
     }
 
     private fun response(
@@ -151,10 +159,14 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
         try {
             val response = Response(receive)
             response.request = request
-            matchProcess.onResponseListener?.onResponse(response)
+            handler.post {
+                matchProcess.onResponseListener?.onResponse(response)
+            }
             removeProcess(matchProcess)
         } catch (e: Exception) {
-            matchProcess.onResponseListener?.onFailure(request, e)
+            handler.post {
+                matchProcess.onResponseListener?.onFailure(request, e)
+            }
             removeProcess(matchProcess)
         }
     }
@@ -165,7 +177,7 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
         }
     }
 
-    private fun timeout() {
+    private fun removeTimeoutRequest() {
         runningRequests.removeAll(timeoutRequests.toSet())
         timeoutRequests.forEach {
             val request = if (it is Request) {
@@ -173,11 +185,29 @@ class DataProcess(private val okSerialPort: OkSerialPort) {
             } else {
                 null
             }
-            it.onResponseListener?.onFailure(
-                request, ResponseTimeoutException("响应超时")
-            )
+            handler.post {
+                it.onResponseListener?.onFailure(request, ResponseTimeoutException("响应超时"))
+            }
         }
         timeoutRequests.clear()
+    }
+
+    private fun isTimeout(process: ResponseProcess?): Boolean {
+        if (process is Request) {
+            val millis = System.currentTimeMillis()
+            if (process.timeout > 0
+                && process.sendTime > 0
+                && millis - process.sendTime > process.timeout
+            ) {
+                if (!process.deductTimeoutRetryCount()) {
+                    addRequest(process)
+                } else {
+                    timeoutRequests.add(process)
+                }
+                return true
+            }
+        }
+        return false
     }
 
     /**

@@ -19,7 +19,7 @@ class Request(internal val data: ByteArray) : ResponseProcess() {
     /**
      * 超时时间，默认5s
      */
-    internal var timeout: Long = 5000
+    internal var timeout: Long = 5000L
 
     /**
      * 超时重试次数，默认不重试
@@ -91,16 +91,26 @@ class Request(internal val data: ByteArray) : ResponseProcess() {
     }
 
     /**
+     * 无限响应
+     *
+     * @return
+     */
+    override fun infiniteResponse(): Request {
+        super.infiniteResponse()
+        return this
+    }
+
+    /**
      * 超时重试次数
      *
      * @return 是否消耗完毕
      */
     internal fun deductTimeoutRetryCount(): Boolean {
-        timeoutRetry -= 1
         if (timeoutRetry <= 0) {
             timeoutRetry = 0
             return true
         }
+        timeoutRetry -= 1
         return false
     }
 
