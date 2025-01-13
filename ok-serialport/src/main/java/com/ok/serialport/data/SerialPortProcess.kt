@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import com.ok.serialport.OkSerialPort
 import com.ok.serialport.exception.ResponseTimeoutException
+import com.ok.serialport.interceptor.RealInterceptorChain
 import com.ok.serialport.jni.SerialPort
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -172,14 +173,20 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             null
         }
         try {
-            val response = Response(receive)
-            response.request = request
+            val response = buildResponse(request, receive)
             handler.post { matchProcess.onResponseListener?.onResponse(response) }
             removeProcess(matchProcess)
         } catch (e: Exception) {
             handler.post { matchProcess.onResponseListener?.onFailure(request, e) }
             removeProcess(matchProcess)
         }
+    }
+
+    private fun buildResponse(request: Request?, receive: ByteArray): Response {
+        val response = Response(receive)
+        response.request = request
+        val chain = RealInterceptorChain(okSerialPort.responseInterceptors, 0, response)
+        return chain.proceed(response)
     }
 
     private fun removeProcess(matchProcess: ResponseProcess) {
@@ -238,7 +245,7 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     /**
      * 取消
      */
-   override fun disconnect() {
+    override fun disconnect() {
         readJob?.cancel(cause = CancellationException("Read job canceled"))
         sendJob?.cancel(cause = CancellationException("Send job canceled"))
         super.disconnect()

@@ -2,11 +2,13 @@ package com.ok.serialport
 
 import androidx.annotation.IntRange
 import com.ok.serialport.data.Request
+import com.ok.serialport.data.Response
 import com.ok.serialport.data.ResponseProcess
 import com.ok.serialport.data.ResponseRule
 import com.ok.serialport.data.SerialPortProcess
 import com.ok.serialport.exception.ReconnectFailException
-import com.ok.serialport.jni.SerialPort
+import com.ok.serialport.interceptor.Interceptor
+import com.ok.serialport.interceptor.RealInterceptorChain
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
 import com.ok.serialport.stick.AbsStickPacketHandle
@@ -50,8 +52,10 @@ class OkSerialPort private constructor(
     internal val logger: SerialLogger,
     // 串口粘包处理
     internal val stickPacketHandle: AbsStickPacketHandle,
-    internal val responseRules: MutableList<ResponseRule>
-) : SerialPort() {
+    internal val responseRules: MutableList<ResponseRule>,
+    internal val responseInterceptors: MutableList<Interceptor<Response>>,
+    private val requestInterceptors: MutableList<Interceptor<Request>>
+) {
     companion object {
         //超过最大限制为无限次重试，重试时间间隔增加
         private const val MAX_RETRY_COUNT = 100
@@ -110,6 +114,12 @@ class OkSerialPort private constructor(
      */
     fun request(request: Request) {
         if (isConnect()) {
+            val chain = RealInterceptorChain(requestInterceptors, 0, request)
+            val newRequest = chain.proceed(request)
+            request.data(newRequest.data)
+                .tag(newRequest.tag)
+                .timeout(newRequest.timeout)
+                .timeoutRetry(newRequest.timeoutRetry)
             serialPortProcess.addRequest(request)
         }
     }
@@ -235,6 +245,12 @@ class OkSerialPort private constructor(
         // 响应匹配规则
         private var responseRules = mutableListOf<ResponseRule>()
 
+        // 响应拦截器
+        private var responseInterceptors = mutableListOf<Interceptor<Response>>()
+
+        // 请求拦截器
+        private var requestInterceptors = mutableListOf<Interceptor<Request>>()
+
         fun devicePath(devicePath: String) = apply {
             this.devicePath = devicePath
         }
@@ -291,6 +307,14 @@ class OkSerialPort private constructor(
             this.responseRules.add(rule)
         }
 
+        fun addInterceptor(interceptor: Interceptor<Request>) = apply {
+            this.requestInterceptors.add(interceptor)
+        }
+
+        fun addInterceptor(interceptor: Interceptor<Response>) = apply {
+            this.responseInterceptors.add(interceptor)
+        }
+
         fun build(): OkSerialPort {
             require(devicePath != null) { "串口地址devicePath不能为空" }
             require(baudRate != null && baudRate!! > 0) { "串口波特率baudRate不能为空或者小于0" }
@@ -306,7 +330,7 @@ class OkSerialPort private constructor(
             return OkSerialPort(
                 devicePath!!, baudRate!!, flags, dataBit, stopBit, parity, maxRetry, retryInterval,
                 sendInterval, readInterval, offlineIntervalSecond, logger, stickPacketHandle,
-                responseRules
+                responseRules, responseInterceptors, requestInterceptors
             )
         }
     }

@@ -213,7 +213,7 @@ class MainActivity : AppCompatActivity() {
             .addResponseRule(object : ResponseRule {
                 override fun match(request: Request?, receive: ByteArray): Boolean {
                     request?.let {
-                        return receive.size >= 6 && it.data()[3] == receive[3]
+                        return receive.size >= 6 && it.data[3] == receive[3]
                     } ?: run {
                         return false
                     }

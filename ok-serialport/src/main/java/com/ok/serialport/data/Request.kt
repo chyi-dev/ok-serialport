@@ -9,7 +9,8 @@ import com.ok.serialport.utils.ByteUtils
  * @author Leyi
  * @date 2025/1/10 16:35
  */
-class Request(internal val data: ByteArray) : ResponseProcess() {
+class Request(var data: ByteArray) : ResponseProcess() {
+    var tag: String = ""
 
     /**
      * 发送时间
@@ -24,15 +25,28 @@ class Request(internal val data: ByteArray) : ResponseProcess() {
     /**
      * 超时重试次数，默认不重试
      */
-    private var timeoutRetry: Int = 0
+    internal var timeoutRetry: Int = 0
 
     /**
      * 请求数据
      *
+     * @param data
      * @return
      */
-    fun data(): ByteArray {
-        return data
+    fun data(data: ByteArray): Request {
+        this.data = data
+        return this
+    }
+
+    /**
+     * 请求标记
+     *
+     * @param tag
+     * @return
+     */
+    fun tag(tag: String): Request {
+        this.tag = tag
+        return this
     }
 
     /**

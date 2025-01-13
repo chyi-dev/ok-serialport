@@ -19,7 +19,7 @@ abstract class ResponseProcess {
 
     internal var onResponseListener: OnResponseListener? = null
 
-    private var count: Int = 1
+    internal var count: Int = 1
 
     /**
      * 添加 MatchRule
