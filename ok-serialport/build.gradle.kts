@@ -1,19 +1,22 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.mavenPublish)
+    id("maven-publish")
 }
 
 group = "com.chyi-dev"
 version = "1.0.2"
 
 
-afterEvaluate {
-    publishing {
-        publications {
-            create<MavenPublication>("release") {
-                groupId = (group.toString())
-                version = version
+publishing {
+    publications {
+        register<MavenPublication>("release") {
+            groupId = "com.chyi-dev"
+            artifactId = "ok-serialport"
+            version = version
+
+            afterEvaluate {
+                from(components["release"])
             }
         }
     }
