@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.chyi-dev"
-version = "1.0.2"
+version = "1.1.0"
 
 
 publishing {
