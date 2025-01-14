@@ -9,7 +9,7 @@ import com.ok.serialport.utils.ByteUtils
  * @author Leyi
  * @date 2025/1/10 16:35
  */
-open class Request(var data: ByteArray) : ResponseProcess() {
+class Request(var data: ByteArray) : ResponseProcess() {
     var tag: String = ""
 
     /**
@@ -33,7 +33,7 @@ open class Request(var data: ByteArray) : ResponseProcess() {
      * @param data
      * @return
      */
-    open fun data(data: ByteArray): Request {
+    fun data(data: ByteArray): Request {
         this.data = data
         return this
     }
@@ -44,7 +44,7 @@ open class Request(var data: ByteArray) : ResponseProcess() {
      * @param tag
      * @return
      */
-    open fun tag(tag: String): Request {
+    fun tag(tag: String): Request {
         this.tag = tag
         return this
     }
@@ -55,7 +55,7 @@ open class Request(var data: ByteArray) : ResponseProcess() {
      * @param timeout
      * @return
      */
-    open fun timeout(timeout: Long): Request {
+    fun timeout(timeout: Long): Request {
         this.timeout = timeout
         return this
     }
@@ -66,7 +66,7 @@ open class Request(var data: ByteArray) : ResponseProcess() {
      * @param count
      * @return
      */
-    open fun timeoutRetry(count: Int): Request {
+    fun timeoutRetry(count: Int): Request {
         this.timeoutRetry = count
         return this
     }
@@ -132,7 +132,7 @@ open class Request(var data: ByteArray) : ResponseProcess() {
      * 数据转Hex
      * @return String
      */
-    open fun toHex(): String {
+    fun toHex(): String {
         return ByteUtils.byteArrToHexStr(data)
     }
 }
