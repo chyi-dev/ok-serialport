@@ -7,7 +7,7 @@ import com.ok.serialport.listener.OnResponseListener
  * @author Leyi
  * @date 2025/1/10 16:35
  */
-abstract class ResponseProcess {
+open class ResponseProcess {
     companion object {
         /**
          * 最大响应次数：无限次响应
