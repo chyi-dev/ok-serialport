@@ -11,6 +11,6 @@ interface Interceptor<T> {
 
     interface Chain<T> {
         fun data(): T
-        fun proceed(request: T): T
+        fun proceed(data: T): T
     }
 }
