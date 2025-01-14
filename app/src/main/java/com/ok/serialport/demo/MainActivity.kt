@@ -21,6 +21,8 @@ import com.ok.serialport.data.Request
 import com.ok.serialport.data.Response
 import com.ok.serialport.data.ResponseRule
 import com.ok.serialport.demo.databinding.ActivityMainBinding
+import com.ok.serialport.demo.interceptor.RequestInterceptor
+import com.ok.serialport.demo.interceptor.ResponseInterceptor
 import com.ok.serialport.jni.SerialPortFinder
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
@@ -210,6 +212,8 @@ class MainActivity : AppCompatActivity() {
             .devicePath(devicePath!!)
             .baudRate(baudRate!!)
             .sendInterval(300)
+            .addRequestInterceptor(RequestInterceptor())
+            .addResponseInterceptor(ResponseInterceptor())
             .addResponseRule(object : ResponseRule {
                 override fun match(request: Request?, receive: ByteArray): Boolean {
                     request?.let {

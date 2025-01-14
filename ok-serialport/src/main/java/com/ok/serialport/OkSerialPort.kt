@@ -307,11 +307,11 @@ class OkSerialPort private constructor(
             this.responseRules.add(rule)
         }
 
-        fun addInterceptor(interceptor: Interceptor<Request>) = apply {
+        fun addRequestInterceptor(interceptor: Interceptor<Request>) = apply {
             this.requestInterceptors.add(interceptor)
         }
 
-        fun addInterceptor(interceptor: Interceptor<Response>) = apply {
+        fun addResponseInterceptor(interceptor: Interceptor<Response>) = apply {
             this.responseInterceptors.add(interceptor)
         }
 

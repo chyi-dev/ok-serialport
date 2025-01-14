@@ -7,11 +7,14 @@ class RealInterceptorChain<T>(
     private val data: T
 ) : Interceptor.Chain<T> {
 
-    override fun request(): T {
+    override fun data(): T {
         return data
     }
 
     override fun proceed(data: T): T {
+        if (index >= interceptors.size) {
+            return data
+        }
         // 获取下一个拦截器
         val next = RealInterceptorChain(interceptors, index + 1, data)
         val interceptor = interceptors[index]

@@ -10,8 +10,7 @@ interface Interceptor<T> {
     fun intercept(chain: Chain<T>): T
 
     interface Chain<T> {
-        fun request(): T
+        fun data(): T
         fun proceed(request: T): T
     }
-
 }
