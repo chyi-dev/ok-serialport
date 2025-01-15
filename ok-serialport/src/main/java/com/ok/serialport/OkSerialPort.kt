@@ -114,12 +114,17 @@ class OkSerialPort private constructor(
      */
     fun request(request: Request) {
         if (isConnect()) {
-            val chain = RealInterceptorChain(requestInterceptors, 0, request)
-            val newRequest = chain.proceed(request)
-            request.data(newRequest.data)
-                .tag(newRequest.tag)
-                .timeout(newRequest.timeout)
-                .timeoutRetry(newRequest.timeoutRetry)
+            try {
+                val chain = RealInterceptorChain(requestInterceptors, 0, request)
+                val newRequest = chain.proceed(request)
+                request.data(newRequest.data)
+                    .tag(newRequest.tag)
+                    .timeout(newRequest.timeout)
+                    .timeoutRetry(newRequest.timeoutRetry)
+            } catch (e: Exception) {
+                request.onResponseListener?.onFailure(request, e)
+                return
+            }
             serialPortProcess.addRequest(request)
         }
     }
