@@ -15,7 +15,7 @@
 
 ## UML图：
 
-![UML类图](D:\workspace\new\ok-serialport\ok-serialport\ok-serialport.png "UML类图")
+![UML类图](https://github.com/chyi-dev/ok-serialport/blob/master/ok-serialport/ok-serialport.png "UML类图")
 
 ---
 
