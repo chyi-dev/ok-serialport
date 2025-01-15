@@ -4,16 +4,12 @@ plugins {
     id("maven-publish")
 }
 
-group = "com.chyi-dev"
-version = "1.1.0"
-
-
 publishing {
     publications {
         register<MavenPublication>("release") {
             groupId = "com.chyi-dev"
             artifactId = "ok-serialport"
-            version = version
+            version = "1.1.0"
 
             afterEvaluate {
                 from(components["release"])
@@ -59,9 +55,7 @@ android {
 
 dependencies {
 
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
+    implementation(libs.coroutines)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

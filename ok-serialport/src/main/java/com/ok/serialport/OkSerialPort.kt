@@ -1,6 +1,5 @@
 package com.ok.serialport
 
-import androidx.annotation.IntRange
 import com.ok.serialport.data.Request
 import com.ok.serialport.data.Response
 import com.ok.serialport.data.ResponseProcess
@@ -223,7 +222,6 @@ class OkSerialPort private constructor(
         private var stopBit: Int = 1
 
         // 校验位：0 表示无校验位，1 表示奇校验，2 表示偶校验
-        @IntRange(from = 0, to = 2)
         private var parity: Int = 0
 
         // 连接最大重试次数 需要大于0 =0 不重试

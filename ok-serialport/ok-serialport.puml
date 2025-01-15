@@ -1,0 +1,211 @@
+@startuml
+class OkSerialPort {
+    - devicePath: String
+    - baudRate: Int
+    - flags: Int
+    - dataBit: Int
+    - stopBit: Int
+    - parity: Int
+    - retryCount: Int
+    - retryInterval: Long
+    - sendInterval: Long
+    - readInterval: Long
+    - offlineIntervalSecond: Int
+    - logger: SerialLogger
+    - stickPacketHandle: AbsStickPacketHandle
+    - responseRules: MutableList<ResponseRule>
+    - responseInterceptors: MutableList<Interceptor<Response>>
+    - requestInterceptors: MutableList<Interceptor<Request>>
+    - serialPortProcess: SerialPortProcess
+    - isConnected: AtomicBoolean
+    - coroutineScope: CoroutineScope
+    - retryTimes: Int
+    - onConnectListener: OnConnectListener?
+    - onDataListener: OnDataListener?
+    + connect()
+    + setConnected(value: Boolean)
+    + isConnect(): Boolean
+    + request(request: Request)
+    + cancel(request: Request): Boolean
+    + addProcess(process: ResponseProcess)
+    + removeProcess(process: ResponseProcess)
+    + addConnectListener(onConnectListener: OnConnectListener)
+    + removeConnectListener()
+    + addDataListener(onDataListener: OnDataListener)
+    + removeDataListener()
+    + disconnect()
+}
+
+class Request {
+    - data: ByteArray
+    - tag: String
+    - sendTime: Long
+    - timeout: Long
+    - timeoutRetry: Int
+    + data(data: ByteArray): Request
+    + tag(tag: String): Request
+    + timeout(timeout: Long): Request
+    + timeoutRetry(count: Int): Request
+    + addResponseRule(responseRule: ResponseRule): Request
+    + onResponseListener(listener: OnResponseListener): Request
+    + responseCount(count: Int): Request
+    + infiniteResponse(): Request
+    + deductTimeoutRetryCount(): Boolean
+    + toHex(): String
+}
+
+class Response {
+    - data: ByteArray
+    - request: Request?
+    + toHex(): String
+}
+
+class ResponseProcess {
+    - responseRules: MutableList<ResponseRule>
+    - onResponseListener: OnResponseListener?
+    - count: Int
+    + addResponseRule(responseRule: ResponseRule): ResponseProcess
+    + isResponseRule(): Boolean
+    + onResponseListener(listener: OnResponseListener): ResponseProcess
+    + responseCount(count: Int): ResponseProcess
+    + infiniteResponse(): ResponseProcess
+    + match(request: Request?, receive: ByteArray): Boolean
+    + deductCount(): Boolean
+}
+
+interface ResponseRule {
+    + match(request: Request?, receive: ByteArray): Boolean
+}
+
+class RealInterceptorChain<T> {
+    - interceptors: List<Interceptor<T>>
+    - index: Int
+    - data: T
+    + data(): T
+    + proceed(data: T): T
+}
+
+interface Interceptor<T> {
+    + intercept(chain: Chain<T>): T
+}
+
+interface Chain<T> {
+    + data(): T
+    + proceed(data: T): T
+}
+
+interface OnConnectListener {
+    + onConnect(devicePath: String)
+    + onDisconnect(devicePath: String, errorMag: Throwable?)
+}
+
+interface OnDataListener {
+    + onRequest(data: ByteArray)
+    + onResponse(data: ByteArray)
+}
+
+interface OnResponseListener {
+    + onResponse(response: Response)
+    + onFailure(request: Request?, e: Exception)
+}
+
+interface AbsStickPacketHandle {
+    + execute(inputStream: InputStream): ByteArray?
+}
+
+class BaseStickPacketHandle {
+    + execute(inputStream: InputStream): ByteArray?
+}
+
+class LenStickPacketHandle {
+    - stickLength: Int
+    + execute(inputStream: InputStream): ByteArray?
+}
+
+class SerialPort {
+    - devicePath: String
+    - baudRate: Int
+    - flags: Int
+    - dataBit: Int
+    - stopBit: Int
+    - parity: Int
+    - logger: SerialLogger
+    - fileInputStream: FileInputStream?
+    - fileOutputStream: FileOutputStream?
+    - fileDescriptor: FileDescriptor?
+    + connect()
+    + checkPermission(): Boolean
+    + chmod777(file: File?): Boolean
+    + readStream(): InputStream?
+    + write(data: ByteArray)
+    + disconnect()
+}
+
+class SerialPortFinder {
+    - TAG: String
+    - DRIVERS_PATH: String
+    - SERIAL_FIELD: String
+    + getDrivers(): MutableList<Driver>
+    + getDevices(): MutableList<Device>
+    + getAllDevicesPath(): Array<String>
+}
+
+class SerialLogger {
+    + log(message: String)
+}
+
+class ByteUtils {
+    + byteToBoolArr(byte: Byte): BooleanArray
+    + byteArrToInt(bytes: ByteArray): Int
+    + byteArrToHexStr(byteArray: ByteArray, isUpperCase: Boolean = true): String
+}
+
+class SerialPortProcess {
+    - okSerialPort: OkSerialPort
+    - handler: Handler
+    - coroutineScope: CoroutineScope
+    - sendJob: Job?
+    - readJob: Job?
+    - readyRequests: ConcurrentLinkedDeque<Request>
+    - runningRequests: ConcurrentLinkedQueue<ResponseProcess>
+    - timeoutRequests: MutableList<ResponseProcess>
+    + start(coroutineScope: CoroutineScope)
+    + addRequest(request: Request)
+    + cancelRequest(request: Request): Boolean
+    + addResponseProcess(responseProcess: ResponseProcess)
+    + removeResponseProcess(process: ResponseProcess)
+}
+
+OkSerialPort --> Request
+OkSerialPort --> Response
+OkSerialPort --> ResponseProcess
+OkSerialPort --> ResponseRule
+OkSerialPort --> Interceptor
+OkSerialPort --> OnConnectListener
+OkSerialPort --> OnDataListener
+OkSerialPort --> OnResponseListener
+OkSerialPort --> AbsStickPacketHandle
+OkSerialPort --> SerialPort
+OkSerialPort --> SerialLogger
+
+Request --> ResponseRule
+Request --> OnResponseListener
+
+Response --> Request
+
+ResponseProcess --> ResponseRule
+ResponseProcess --> OnResponseListener
+
+Interceptor +-- Chain
+RealInterceptorChain --> Interceptor
+
+SerialPort --> SerialLogger
+
+SerialPortProcess --> OkSerialPort
+SerialPortProcess --> Request
+SerialPortProcess --> ResponseProcess
+
+BaseStickPacketHandle --> AbsStickPacketHandle
+LenStickPacketHandle --> AbsStickPacketHandle
+
+@enduml
