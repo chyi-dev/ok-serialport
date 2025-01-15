@@ -9,10 +9,14 @@ import com.elvishew.xlog.flattener.PatternFlattener
 import com.elvishew.xlog.printer.AndroidPrinter
 import com.elvishew.xlog.printer.Printer
 import com.elvishew.xlog.printer.file.FilePrinter
-import com.elvishew.xlog.printer.file.backup.FileSizeBackupStrategy2
+import com.elvishew.xlog.printer.file.backup.NeverBackupStrategy
 import com.elvishew.xlog.printer.file.clean.FileLastModifiedCleanStrategy
-import com.elvishew.xlog.printer.file.naming.DateFileNameGenerator
+import com.elvishew.xlog.printer.file.naming.FileNameGenerator
 import me.jessyan.autosize.AutoSizeConfig
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  *
@@ -59,13 +63,8 @@ class AppApplication : Application() {
         val filePrinter: Printer = FilePrinter.Builder(Constant.LOG_PATH) // 指定保存日志文件的路径
             .flattener(PatternFlattener("{d} {l}/{t}: {m}")) // 自定义日志格式
             .fileNameGenerator(DateFileNameGenerator()) // 指定日志文件名生成器，默认为 ChangelessFileNameGenerator("log")
-            .backupStrategy(
-                FileSizeBackupStrategy2(
-                    1024 * 1024,
-                    1
-                )
-            ) // 指定日志文件备份策略，默认为 FileSizeBackupStrategy(1024 * 1024)
-            .cleanStrategy(FileLastModifiedCleanStrategy((1000 * 60 * 24 * 7).toLong())) // 指定日志文件清除策略，默认为 NeverCleanStrategy()
+            .backupStrategy(NeverBackupStrategy()) // 指定日志文件备份策略，默认为 FileSizeBackupStrategy(1024 * 1024)
+            .cleanStrategy(FileLastModifiedCleanStrategy((1000 * 60 * 60 * 24 * 7).toLong())) // 指定日志文件清除策略，默认为 NeverCleanStrategy()
             .build()
 
         if (!BuildConfig.DEBUG) {
@@ -81,5 +80,26 @@ class AppApplication : Application() {
                 androidPrinter,  // 添加任意多的打印器。如果没有添加任何打印器，会默认使用 AndroidPrinter(Android)/ConsolePrinter(java)
             )
         }
+    }
+}
+
+class DateFileNameGenerator : FileNameGenerator {
+    var mLocalDateFormat: ThreadLocal<SimpleDateFormat> = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue(): SimpleDateFormat {
+            return SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        }
+    }
+
+    override fun isFileNameChangeable(): Boolean {
+        return true
+    }
+
+    /**
+     * Generate a file name which represent a specific date.
+     */
+    override fun generateFileName(logLevel: Int, timestamp: Long): String {
+        val sdf = mLocalDateFormat.get()
+        sdf.timeZone = TimeZone.getDefault()
+        return sdf.format(Date(timestamp)) + ".txt"
     }
 }
