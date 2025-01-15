@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.blankj.utilcode.util.TimeUtils
 import com.chad.library.adapter4.BaseQuickAdapter
 import com.chad.library.adapter4.viewholder.QuickViewHolder
+import com.elvishew.xlog.XLog
 import com.ok.serialport.OkSerialPort
 import com.ok.serialport.data.Request
 import com.ok.serialport.data.Response
@@ -91,7 +92,7 @@ class MainActivity : AppCompatActivity() {
             if (byteArr != null) {
                 job = lifecycleScope.launch {
                     while (isActive) {
-                        delay(500)
+                        delay(200)
                         withContext(Dispatchers.Main) {
                             val request = Request(byteArr)
                             serialClient?.request(request)
@@ -211,9 +212,9 @@ class MainActivity : AppCompatActivity() {
         serialClient = OkSerialPort.Builder()
             .devicePath(devicePath!!)
             .baudRate(baudRate!!)
-            .sendInterval(300)
-            .addRequestInterceptor(RequestInterceptor())
-            .addResponseInterceptor(ResponseInterceptor())
+            .sendInterval(100)
+//            .addRequestInterceptor(RequestInterceptor())
+//            .addResponseInterceptor(ResponseInterceptor())
             .addResponseRule(object : ResponseRule {
                 override fun match(request: Request?, receive: ByteArray): Boolean {
                     request?.let {
@@ -240,12 +241,12 @@ class MainActivity : AppCompatActivity() {
 
         serialClient?.addDataListener(object : OnDataListener {
             override fun onRequest(data: ByteArray) {
-                Log.i("Ok-Serial", "onRequest:${ByteUtils.byteArrToHexStr(data)}")
+                XLog.i("onRequest:${ByteUtils.byteArrToHexStr(data)}")
                 addLog("发送", ByteUtils.byteArrToHexStr(data))
             }
 
             override fun onResponse(data: ByteArray) {
-                Log.i("Ok-Serial", "onResponse:${ByteUtils.byteArrToHexStr(data)}")
+                XLog.i( "onResponse:${ByteUtils.byteArrToHexStr(data)}")
                 addLog("响应", ByteUtils.byteArrToHexStr(data))
             }
         })
