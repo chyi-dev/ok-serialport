@@ -373,3 +373,7 @@ val request = Request(byteArr)
     })
 serialPort?.request(request)
 ```
+
+## 感谢
+
+串口c++部分取自：https://github.com/cl-6666/serialPort
