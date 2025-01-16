@@ -46,7 +46,6 @@ class Request(var data: ByteArray) : ResponseProcess() {
     /**
      * 阻塞
      *
-     * @param tag
      * @return
      */
     fun blocking(): Request {

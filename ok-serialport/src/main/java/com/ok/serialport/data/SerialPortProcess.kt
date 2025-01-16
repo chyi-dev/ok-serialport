@@ -41,7 +41,6 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     private val timeoutRequests = mutableListOf<ResponseProcess>()
     private val isBlocking = AtomicBoolean(false)
     private var blockingRequest: Request? = null
-    private val maxRequestSize = 100
 
     fun start(coroutineScope: CoroutineScope) {
         this.coroutineScope = coroutineScope
@@ -50,7 +49,7 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     }
 
     fun addRequest(request: Request) {
-        if (readyRequests.size > maxRequestSize) {
+        if (readyRequests.size > okSerialPort.maxRequestSize) {
             throw RejectedExecutionException("串口队列超出处理容量。处理容量最大为：100")
         }
         request.sendTime = 0

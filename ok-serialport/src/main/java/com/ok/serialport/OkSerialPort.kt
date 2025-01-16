@@ -45,8 +45,8 @@ class OkSerialPort private constructor(
     internal val sendInterval: Long,
     // 读取间隔
     internal val readInterval: Long,
-    // 离线识别间隔
-    private val offlineIntervalSecond: Int,
+    // 最大请求数
+    internal val maxRequestSize: Int,
     // 日志
     internal val logger: SerialLogger,
     // 串口粘包处理
@@ -55,11 +55,6 @@ class OkSerialPort private constructor(
     internal val responseInterceptors: MutableList<Interceptor<Response>>,
     private val requestInterceptors: MutableList<Interceptor<Request>>
 ) {
-    companion object {
-        //超过最大限制为无限次重试，重试时间间隔增加
-        private const val MAX_RETRY_COUNT = 100
-    }
-
     private val serialPortProcess by lazy {
         SerialPortProcess(this)
     }
@@ -231,13 +226,13 @@ class OkSerialPort private constructor(
         private var retryInterval: Long = 1000L
 
         // 发送间隔
-        var sendInterval: Long = 300L
+        private var sendInterval: Long = 300L
 
         // 读取间隔
         private var readInterval: Long = 50L
 
-        // 离线识别间隔
-        private var offlineIntervalSecond: Int = 0
+        // 最大请求数
+        private var maxRequestSize: Int = 100
 
         // 日志
         private var logger: SerialLogger = SerialLogger()
@@ -294,11 +289,11 @@ class OkSerialPort private constructor(
             this.readInterval = readInterval
         }
 
-        fun offlineIntervalSecond(offlineIntervalSecond: Int) = apply {
-            this.offlineIntervalSecond = offlineIntervalSecond
+        fun maxRequestSize(maxRequestSize: Int) = apply {
+            this.maxRequestSize = maxRequestSize
         }
 
-        fun logger(logger: com.ok.serialport.utils.SerialLogger) = apply {
+        fun logger(logger: SerialLogger) = apply {
             this.logger = logger
         }
 
@@ -329,10 +324,11 @@ class OkSerialPort private constructor(
             require(retryInterval >= 500) { "重试时间间隔不能小于500毫秒" }
             require(sendInterval >= 100) { "发送数据时间间隔不能小于100毫秒" }
             require(readInterval >= 10) { "读取数据时间间隔不能小于10毫秒" }
+            require(maxRequestSize in 1..10000) { "队列容量区间为1-10000" }
 
             return OkSerialPort(
                 devicePath!!, baudRate!!, flags, dataBit, stopBit, parity, maxRetry, retryInterval,
-                sendInterval, readInterval, offlineIntervalSecond, logger, stickPacketHandle,
+                sendInterval, readInterval, maxRequestSize, logger, stickPacketHandle,
                 responseRules, responseInterceptors, requestInterceptors
             )
         }
