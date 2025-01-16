@@ -10,6 +10,7 @@
 - 响应规则拆分；
 - 全局响应规则和单个请求响应规则；
 - 增加请求和响应拦截器；
+- 增加阻塞式请求；
 
 ---
 
@@ -131,8 +132,8 @@ OkSerialPort、Request、Response、ResponseProcess、SerialPortProcess 等。
 - **`readInterval(readInterval: Long)`**  
   设置读取数据的时间间隔（毫秒）。
 
-- **`offlineIntervalSecond(offlineIntervalSecond: Int)`**  
-  设置离线识别间隔时间（秒）。
+- **`maxRequestSize(maxRequestSize: Int)`**  
+  设置最大请求数，默认为100。
 
 - **`logger(logger: SerialLogger)`**  
   设置日志记录器。
@@ -164,6 +165,8 @@ OkSerialPort、Request、Response、ResponseProcess、SerialPortProcess 等。
   设置请求数据
 - **`tag(tag: String): Request`**  
   设置请求标记
+- **`block(): Request`**    
+  设置是否为阻塞式
 - **`timeout(timeout: Long): Request`**    
   设置超时时间
 - **`timeoutRetry(count: Int): Request`**    
