@@ -120,11 +120,11 @@ class OkSerialPort private constructor(
                     .tag(newRequest.tag)
                     .timeout(newRequest.timeout)
                     .timeoutRetry(newRequest.timeoutRetry)
+                serialPortProcess.addRequest(request)
             } catch (e: Exception) {
                 request.onResponseListener?.onFailure(request, e)
                 return
             }
-            serialPortProcess.addRequest(request)
         }
     }
 

@@ -22,8 +22,6 @@ import com.ok.serialport.data.Request
 import com.ok.serialport.data.Response
 import com.ok.serialport.data.ResponseRule
 import com.ok.serialport.demo.databinding.ActivityMainBinding
-import com.ok.serialport.demo.interceptor.RequestInterceptor
-import com.ok.serialport.demo.interceptor.ResponseInterceptor
 import com.ok.serialport.jni.SerialPortFinder
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
@@ -87,7 +85,11 @@ class MainActivity : AppCompatActivity() {
                 binding.btnTimingSend.text = "循环发送"
                 return@setOnClickListener
             }
-
+            Toast.makeText(
+                this@MainActivity,
+                "当前为阻塞式",
+                Toast.LENGTH_LONG
+            ).show()
             val byteArr = getData()
             if (byteArr != null) {
                 job = lifecycleScope.launch {
@@ -95,6 +97,7 @@ class MainActivity : AppCompatActivity() {
                         delay(200)
                         withContext(Dispatchers.Main) {
                             val request = Request(byteArr)
+                                .blocking()
                             serialClient?.request(request)
                         }
                     }
@@ -215,15 +218,15 @@ class MainActivity : AppCompatActivity() {
             .sendInterval(100)
 //            .addRequestInterceptor(RequestInterceptor())
 //            .addResponseInterceptor(ResponseInterceptor())
-            .addResponseRule(object : ResponseRule {
-                override fun match(request: Request?, receive: ByteArray): Boolean {
-                    request?.let {
-                        return receive.size >= 6 && it.data[3] == receive[3]
-                    } ?: run {
-                        return false
-                    }
-                }
-            })
+//            .addResponseRule(object : ResponseRule {
+//                override fun match(request: Request?, receive: ByteArray): Boolean {
+//                    request?.let {
+//                        return receive.size >= 6 && it.data[3] == receive[3]
+//                    } ?: run {
+//                        return false
+//                    }
+//                }
+//            })
             .build()
         serialClient?.addConnectListener(object : OnConnectListener {
             override fun onConnect(devicePath: String) {
@@ -246,7 +249,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onResponse(data: ByteArray) {
-                XLog.i( "onResponse:${ByteUtils.byteArrToHexStr(data)}")
+                XLog.i("onResponse:${ByteUtils.byteArrToHexStr(data)}")
                 addLog("响应", ByteUtils.byteArrToHexStr(data))
             }
         })

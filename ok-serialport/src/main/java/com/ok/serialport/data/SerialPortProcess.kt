@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 import java.io.IOException
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -37,6 +39,9 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     private val readyRequests = ConcurrentLinkedDeque<Request>()
     private val runningRequests = ConcurrentLinkedQueue<ResponseProcess>()
     private val timeoutRequests = mutableListOf<ResponseProcess>()
+    private val isBlocking = AtomicBoolean(false)
+    private var blockingRequest: Request? = null
+    private val maxRequestSize = 100
 
     fun start(coroutineScope: CoroutineScope) {
         this.coroutineScope = coroutineScope
@@ -45,6 +50,9 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     }
 
     fun addRequest(request: Request) {
+        if (readyRequests.size > maxRequestSize) {
+            throw RejectedExecutionException("串口队列超出处理容量。处理容量最大为：100")
+        }
         request.sendTime = 0
         readyRequests.add(request)
     }
@@ -67,13 +75,21 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             try {
                 while (okSerialPort.isConnect() && isActive) {
                     delay(okSerialPort.sendInterval)
+                    if (isBlocking.get()) {
+                        continue
+                    }
                     val request = readyRequests.pollLast()
                     request?.let {
                         try {
+                            if (request.isBlock) {
+                                isBlocking.set(true)
+                                blockingRequest = request
+                            }
                             write(request.data)
                             handler.post { okSerialPort.onDataListener?.onRequest(request.data) }
                             addRunningRequest(request)
                         } catch (e: IOException) {
+                            blockRelease(request)
                             handler.post {
                                 request.onResponseListener?.onFailure(request, e)
                             }
@@ -92,6 +108,7 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                 runningRequests.add(request)
             }
         } else {
+            blockRelease(request)
             handler.post {
                 request.onResponseListener?.onFailure(request, NullPointerException("响应规则为空"))
             }
@@ -174,11 +191,11 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
         }
         try {
             val response = buildResponse(request, receive)
+            removeProcess(matchProcess)
             handler.post { matchProcess.onResponseListener?.onResponse(response) }
-            removeProcess(matchProcess)
         } catch (e: Exception) {
-            handler.post { matchProcess.onResponseListener?.onFailure(request, e) }
             removeProcess(matchProcess)
+            handler.post { matchProcess.onResponseListener?.onFailure(request, e) }
         }
     }
 
@@ -190,8 +207,22 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     }
 
     private fun removeProcess(matchProcess: ResponseProcess) {
+        blockRelease(matchProcess)
         if (matchProcess.deductCount()) {
             runningRequests.remove(matchProcess)
+        }
+    }
+
+    private fun blockRelease(process: ResponseProcess?) {
+        if (process == null) {
+            return
+        }
+        if (process !is Request) {
+            return
+        }
+        if (blockingRequest != null && process == blockingRequest) {
+            isBlocking.set(false)
+            blockingRequest = null
         }
     }
 
@@ -203,6 +234,7 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             } else {
                 null
             }
+            blockRelease(request)
             handler.post {
                 it.onResponseListener?.onFailure(request, ResponseTimeoutException("响应超时"))
             }
@@ -227,10 +259,7 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     private fun isTimeout(process: ResponseProcess?): Boolean {
         if (process is Request) {
             val millis = System.currentTimeMillis()
-            if (process.timeout > 0
-                && process.sendTime > 0
-                && millis - process.sendTime > process.timeout
-            ) {
+            if (process.timeout > 0 && process.sendTime > 0 && millis - process.sendTime > process.timeout) {
                 if (!process.deductTimeoutRetryCount()) {
                     process.sendTime = 0
                     readyRequests.addLast(process)

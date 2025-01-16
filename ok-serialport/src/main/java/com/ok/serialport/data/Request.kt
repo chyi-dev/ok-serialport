@@ -28,6 +28,11 @@ class Request(var data: ByteArray) : ResponseProcess() {
     internal var timeoutRetry: Int = 0
 
     /**
+     * 是否阻塞
+     */
+    internal var isBlock: Boolean = false
+
+    /**
      * 请求数据
      *
      * @param data
@@ -35,6 +40,17 @@ class Request(var data: ByteArray) : ResponseProcess() {
      */
     fun data(data: ByteArray): Request {
         this.data = data
+        return this
+    }
+
+    /**
+     * 阻塞
+     *
+     * @param tag
+     * @return
+     */
+    fun blocking(): Request {
+        this.isBlock = true
         return this
     }
 
