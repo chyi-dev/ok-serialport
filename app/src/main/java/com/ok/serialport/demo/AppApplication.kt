@@ -61,7 +61,7 @@ class AppApplication : Application() {
 
         val androidPrinter: Printer = AndroidPrinter(true) // 通过 android.util.Log 打印日志的打印器
         val filePrinter: Printer = FilePrinter.Builder(Constant.LOG_PATH) // 指定保存日志文件的路径
-            .flattener(PatternFlattener("{d} {l}/{t}: {m}")) // 自定义日志格式
+            .flattener(PatternFlattener("{m}")) // 自定义日志格式
             .fileNameGenerator(DateFileNameGenerator()) // 指定日志文件名生成器，默认为 ChangelessFileNameGenerator("log")
             .backupStrategy(NeverBackupStrategy()) // 指定日志文件备份策略，默认为 FileSizeBackupStrategy(1024 * 1024)
             .cleanStrategy(FileLastModifiedCleanStrategy((1000 * 60 * 60 * 24 * 7).toLong())) // 指定日志文件清除策略，默认为 NeverCleanStrategy()

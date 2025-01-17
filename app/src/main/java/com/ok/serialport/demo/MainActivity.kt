@@ -87,17 +87,17 @@ class MainActivity : AppCompatActivity() {
             }
             Toast.makeText(
                 this@MainActivity,
-                "当前为阻塞式",
+                "当前为非阻塞式",
                 Toast.LENGTH_LONG
             ).show()
             val byteArr = getData()
             if (byteArr != null) {
                 job = lifecycleScope.launch {
                     while (isActive) {
-                        delay(200)
+                        delay(500)
                         withContext(Dispatchers.Main) {
                             val request = Request(byteArr)
-                                .blocking()
+//                                .blocking()
                             serialClient?.request(request)
                         }
                     }
