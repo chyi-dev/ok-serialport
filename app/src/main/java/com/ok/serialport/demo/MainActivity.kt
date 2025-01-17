@@ -94,7 +94,7 @@ class MainActivity : AppCompatActivity() {
             if (byteArr != null) {
                 job = lifecycleScope.launch {
                     while (isActive) {
-                        delay(500)
+                        delay(200)
                         withContext(Dispatchers.Main) {
                             val request = Request(byteArr)
 //                                .blocking()
