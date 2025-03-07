@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.net.ConnectException
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.RejectedExecutionException
@@ -278,5 +279,17 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
         readJob?.cancel(cause = CancellationException("Read job canceled"))
         sendJob?.cancel(cause = CancellationException("Send job canceled"))
         super.disconnect()
+        readyRequests.forEach {
+            it.onResponseListener?.onFailure(it, ConnectException("serial port disconnect"))
+        }
+        runningRequests.forEach {
+            if (it is Request) {
+                it.onResponseListener?.onFailure(it, ConnectException("serial port disconnect"))
+            } else {
+                it.onResponseListener?.onFailure(null, ConnectException("serial port disconnect"))
+            }
+        }
+        readyRequests.clear()
+        runningRequests.clear()
     }
 }

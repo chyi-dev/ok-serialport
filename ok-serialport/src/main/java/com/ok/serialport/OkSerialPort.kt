@@ -197,6 +197,8 @@ class OkSerialPort private constructor(
         if (isConnect()) {
             serialPortProcess.disconnect()
             setConnected(false)
+            onConnectListener = null
+            onDataListener = null
         }
     }
 
