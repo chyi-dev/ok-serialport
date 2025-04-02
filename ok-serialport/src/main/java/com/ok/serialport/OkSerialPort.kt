@@ -231,7 +231,7 @@ class OkSerialPort private constructor(
         private var sendInterval: Long = 300L
 
         // 读取间隔
-        private var readInterval: Long = 50L
+        private var readInterval: Long = 1L
 
         // 最大请求数
         private var maxRequestSize: Int = 100
@@ -325,7 +325,7 @@ class OkSerialPort private constructor(
             require(maxRetry >= 0) { "重试次数不能小于0" }
             require(retryInterval >= 500) { "重试时间间隔不能小于500毫秒" }
             require(sendInterval >= 100) { "发送数据时间间隔不能小于100毫秒" }
-            require(readInterval >= 10) { "读取数据时间间隔不能小于10毫秒" }
+            require(readInterval >= 1) { "读取数据时间间隔不能小于1毫秒" }
             require(maxRequestSize in 1..10000) { "队列容量区间为1-10000" }
 
             return OkSerialPort(
