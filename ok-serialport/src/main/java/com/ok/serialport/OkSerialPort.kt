@@ -231,7 +231,7 @@ class OkSerialPort private constructor(
         private var sendInterval: Long = 300L
 
         // 读取间隔
-        private var readInterval: Long = 1L
+        private var readInterval: Long = 50L
 
         // 最大请求数
         private var maxRequestSize: Int = 100
