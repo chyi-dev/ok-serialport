@@ -291,7 +291,7 @@
                 android:textSize="12sp" />
 
             <TextView
-                android:id="@+id/btn_response_test"
+                android:id="@+id/btn_blocking"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_margin="4dp"
@@ -303,7 +303,7 @@
                 android:paddingTop="10dp"
                 android:paddingEnd="20dp"
                 android:paddingBottom="10dp"
-                android:text="超时重试"
+                android:text="阻塞发送"
                 android:textColor="@color/white"
                 android:textSize="12sp" />
         </LinearLayout>

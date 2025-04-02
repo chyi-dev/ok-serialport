@@ -172,11 +172,39 @@ class MainActivity : AppCompatActivity() {
                     .responseCount(3)
                     .onResponseListener(object : OnResponseListener {
                         override fun onResponse(response: Response) {
+                            addLog("发送", ByteUtils.byteArrToHexStr(response.data))
                             Log.i("Ok-Serial", "response onResponse:${response.toHex()}")
                         }
 
                         override fun onFailure(request: Request?, e: Exception) {
                             Log.i("Ok-Serial", "response onFailure:${e.message}")
+                            addLog("响应", "失败：${e.message}")
+                        }
+                    })
+                serialClient?.request(request)
+            }
+        }
+
+        binding.btnBlocking.setOnClickListener {
+            val byteArr = getData()
+            if (byteArr != null) {
+                val request = Request(byteArr)
+                    .blocking()
+                    .timeout(1500)
+                    .timeoutRetry(2)
+                    .addResponseRule(object : ResponseRule {
+                        override fun match(request: Request?, receive: ByteArray): Boolean {
+                            return receive.size >= 9 && receive[3] == 0x1E.toByte()
+                        }
+                    })
+                    .onResponseListener(object : OnResponseListener {
+                        override fun onResponse(response: Response) {
+                            addLog("发送", ByteUtils.byteArrToHexStr(response.data))
+                            Log.i("Ok-Serial", "Blocking onResponse:${response.toHex()}")
+                        }
+
+                        override fun onFailure(request: Request?, e: Exception) {
+                            Log.i("Ok-Serial", "Blocking onFailure:${e.message}")
                             addLog("响应", "失败：${e.message}")
                         }
                     })

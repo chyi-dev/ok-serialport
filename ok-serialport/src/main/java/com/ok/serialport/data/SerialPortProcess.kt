@@ -262,6 +262,7 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             if (process.timeout > 0 && process.sendTime > 0 && millis - process.sendTime > process.timeout) {
                 if (!process.deductTimeoutRetryCount()) {
                     process.sendTime = 0
+                    blockRelease(process)
                     readyRequests.addLast(process)
                 } else {
                     timeoutRequests.add(process)
