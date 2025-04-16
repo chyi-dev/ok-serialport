@@ -79,7 +79,8 @@ class SerialPortFinder {
         } catch (e: IOException) {
             e.printStackTrace()
         }
-        return devices
+        val list = devices.sortedBy { it.name.lowercase() }.toMutableList()
+        return list
     }
 
 
