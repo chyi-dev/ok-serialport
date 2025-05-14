@@ -357,7 +357,6 @@ class MainActivity : AppCompatActivity() {
                 devicePath = null
             }
         }
-        binding.spDevice.setSelection(7)
     }
 
     private fun initBaudRate() {
