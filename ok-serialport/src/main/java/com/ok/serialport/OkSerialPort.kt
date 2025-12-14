@@ -10,6 +10,7 @@ import com.ok.serialport.interceptor.Interceptor
 import com.ok.serialport.interceptor.RealInterceptorChain
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
+import com.ok.serialport.listener.OnPerformanceListener
 import com.ok.serialport.stick.AbsStickPacketHandle
 import com.ok.serialport.stick.BaseStickPacketHandle
 import com.ok.serialport.utils.SerialLogger
@@ -45,6 +46,10 @@ class OkSerialPort private constructor(
     internal val sendInterval: Long,
     // 读取间隔
     internal val readInterval: Long,
+    // 是否使用阻塞式读取（默认true，使用专用线程+阻塞读取以提升性能）
+    internal val useBlockingRead: Boolean,
+    // 读取线程优先级（默认THREAD_PRIORITY_URGENT_AUDIO）
+    internal val readThreadPriority: Int,
     // 最大请求数
     internal val maxRequestSize: Int,
     // 日志
@@ -63,12 +68,18 @@ class OkSerialPort private constructor(
 
     //重连次数
     private var retryTimes = 0
+    
+    // 是否正在重连
+    private val isReconnecting = AtomicBoolean(false)
 
     // 串口连接监听
     private var onConnectListener: OnConnectListener? = null
 
     // 串口全局数据监听
     internal var onDataListener: OnDataListener? = null
+    
+    // 重连Job，用于取消重连
+    private var reconnectJob: kotlinx.coroutines.Job? = null
 
     /**
      * 串口连接
@@ -79,8 +90,9 @@ class OkSerialPort private constructor(
             serialPortProcess.connect()
         } catch (e: Exception) {
             logger.log("串口(${devicePath}:${baudRate})连接失败：${e.message}")
+            setConnected(false)
             onConnectListener?.onDisconnect(devicePath, e)
-            reconnect()
+            handleConnectionFailure(e)
             return
         }
         setConnected(true)
@@ -89,15 +101,43 @@ class OkSerialPort private constructor(
             serialPortProcess.start(coroutineScope)
             onConnectListener?.onConnect(devicePath)
             retryTimes = 0
+            isReconnecting.set(false)
         } catch (e: Exception) {
             logger.log("读写线程启动失败：${e.message}")
+            setConnected(false)
             onConnectListener?.onDisconnect(devicePath, e)
-            reconnect()
+            handleConnectionFailure(e)
         }
+    }
+    
+    /**
+     * 处理连接失败
+     */
+    private fun handleConnectionFailure(e: Exception) {
+        // 判断错误类型
+        val isPermanentError = when (e) {
+            is SecurityException -> true // 权限错误，永久错误
+            is java.io.FileNotFoundException -> true // 文件不存在，永久错误
+            else -> false // 其他错误可能是临时的
+        }
+        
+        if (isPermanentError) {
+            logger.log("检测到永久错误，停止重连：${e.javaClass.simpleName}")
+            retryTimes = retryCount // 标记为已重试完毕
+        }
+        
+        reconnect()
     }
 
     private fun setConnected(value: Boolean) {
         isConnected.set(value)
+    }
+    
+    /**
+     * 内部方法：由SerialPortProcess调用，用于标记连接断开
+     */
+    internal fun markDisconnected() {
+        setConnected(false)
     }
 
     fun isConnect(): Boolean = isConnected.get()
@@ -175,17 +215,45 @@ class OkSerialPort private constructor(
     }
 
     /**
+     * 添加性能监听器
+     */
+    fun addPerformanceListener(listener: OnPerformanceListener) {
+        serialPortProcess.setPerformanceListener(listener)
+    }
+
+    /**
+     * 移除性能监听器
+     */
+    fun removePerformanceListener() {
+        serialPortProcess.setPerformanceListener(null)
+    }
+
+    /**
      * 重连
      */
     private fun reconnect() {
-        coroutineScope.launch {
-            delay(retryInterval)
-            logger.log("开始重连，进度：${retryCount + 1} / $retryCount")
-            connect()
-            retryTimes++
-            delay(100)
-            if (retryTimes >= retryCount && !isConnect()) {
-                onConnectListener?.onDisconnect(devicePath, ReconnectFailException("重连失败"))
+        // 如果已经达到重试次数，不再重连
+        if (retryTimes >= retryCount) {
+            if (!isConnect()) {
+                onConnectListener?.onDisconnect(devicePath, ReconnectFailException("重连失败，已重试${retryCount}次"))
+            }
+            return
+        }
+        
+        // 如果正在重连，不重复启动
+        if (isReconnecting.getAndSet(true)) {
+            return
+        }
+        
+        reconnectJob = coroutineScope.launch {
+            try {
+                delay(retryInterval)
+                retryTimes++
+                logger.log("开始重连，进度：$retryTimes / $retryCount")
+                connect()
+            } catch (e: Exception) {
+                logger.log("重连过程异常：${e.message}")
+                isReconnecting.set(false)
             }
         }
     }
@@ -194,6 +262,12 @@ class OkSerialPort private constructor(
      * 断开串口连接
      */
     fun disconnect() {
+        // 取消重连任务
+        reconnectJob?.cancel()
+        reconnectJob = null
+        isReconnecting.set(false)
+        retryTimes = 0
+        
         if (isConnect()) {
             serialPortProcess.disconnect()
             setConnected(false)
@@ -232,6 +306,12 @@ class OkSerialPort private constructor(
 
         // 读取间隔
         private var readInterval: Long = 50L
+
+        // 是否使用阻塞式读取（默认true，使用专用线程+阻塞读取以提升性能）
+        private var useBlockingRead: Boolean = true
+
+        // 读取线程优先级（默认THREAD_PRIORITY_URGENT_AUDIO = -19）
+        private var readThreadPriority: Int = -19
 
         // 最大请求数
         private var maxRequestSize: Int = 100
@@ -291,6 +371,22 @@ class OkSerialPort private constructor(
             this.readInterval = readInterval
         }
 
+        /**
+         * 设置是否使用阻塞式读取
+         * @param useBlockingRead true=使用专用线程+阻塞读取（推荐，性能更好），false=使用协程轮询（兼容旧版本）
+         */
+        fun useBlockingRead(useBlockingRead: Boolean) = apply {
+            this.useBlockingRead = useBlockingRead
+        }
+
+        /**
+         * 设置读取线程优先级
+         * @param priority 线程优先级，建议使用Process.THREAD_PRIORITY_URGENT_AUDIO(-19)或更高
+         */
+        fun readThreadPriority(priority: Int) = apply {
+            this.readThreadPriority = priority
+        }
+
         fun maxRequestSize(maxRequestSize: Int) = apply {
             this.maxRequestSize = maxRequestSize
         }
@@ -327,10 +423,11 @@ class OkSerialPort private constructor(
             require(sendInterval >= 100) { "发送数据时间间隔不能小于100毫秒" }
             require(readInterval >= 1) { "读取数据时间间隔不能小于1毫秒" }
             require(maxRequestSize in 1..10000) { "队列容量区间为1-10000" }
+            // 如果使用阻塞读取，readInterval仅用于超时检查，不影响实际读取延迟
 
             return OkSerialPort(
                 devicePath!!, baudRate!!, flags, dataBit, stopBit, parity, maxRetry, retryInterval,
-                sendInterval, readInterval, maxRequestSize, logger, stickPacketHandle,
+                sendInterval, readInterval, useBlockingRead, readThreadPriority, maxRequestSize, logger, stickPacketHandle,
                 responseRules, responseInterceptors, requestInterceptors
             )
         }
