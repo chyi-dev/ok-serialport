@@ -157,5 +157,4 @@ open class SerialPort(
 
     // 关闭串口
     private external fun close()
-
 }

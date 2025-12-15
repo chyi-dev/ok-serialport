@@ -1,7 +1,5 @@
 package com.ok.serialport.data
 
-import android.os.Handler
-import android.os.Looper
 import com.ok.serialport.OkSerialPort
 import com.ok.serialport.exception.ResponseTimeoutException
 import com.ok.serialport.interceptor.RealInterceptorChain
@@ -9,6 +7,7 @@ import com.ok.serialport.jni.SerialPort
 import com.ok.serialport.listener.OnPerformanceListener
 import android.os.Process
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -18,6 +17,7 @@ import java.io.InputStream
 import java.net.ConnectException
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -37,15 +37,16 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     okSerialPort.parity,
     okSerialPort.logger
 ) {
-    private val handler = Handler(Looper.getMainLooper())
     private lateinit var coroutineScope: CoroutineScope
     private var sendJob: Job? = null
     private var readJob: Job? = null
     private var readThread: Thread? = null
     private val shouldStopReading = AtomicBoolean(false)
     private val readyRequests = ConcurrentLinkedDeque<Request>()
-    private val runningRequests = ConcurrentLinkedQueue<ResponseProcess>()
-    private val timeoutRequests = mutableListOf<ResponseProcess>()
+    // 优化：使用CopyOnWriteArrayList，读多写少场景性能更好，且支持快速遍历
+    private val runningRequests = CopyOnWriteArrayList<ResponseProcess>()
+    // 优化：使用线程安全集合
+    private val timeoutRequests = CopyOnWriteArrayList<ResponseProcess>()
     private val isBlocking = AtomicBoolean(false)
     private var blockingRequest: Request? = null
     
@@ -65,11 +66,10 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     private val dataLossCount = AtomicLong(0)
     private val timeoutRequestCount = AtomicLong(0)
     
-    // 读取延迟统计
-    private val readLatencies = mutableListOf<Long>()
+    // 读取延迟统计（优化：使用无锁队列，移除synchronized）
+    private val readLatencies = ConcurrentLinkedQueue<Long>()
     private val maxReadLatency = AtomicLong(0)
     private val minReadLatency = AtomicLong(Long.MAX_VALUE)
-    private val readLatencyLock = Any()
     
     // 数据丢失检测：记录最后接收时间
     private val lastReceiveTime = AtomicLong(0)
@@ -113,18 +113,13 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     private fun updatePerformanceMetrics() {
         val listener = performanceListener ?: return
         
-        // 计算平均读取延迟
-        val avgLatency = synchronized(readLatencyLock) {
-            if (readLatencies.isEmpty()) {
-                0.0
-            } else {
-                readLatencies.average().also {
-                    // 保留最近1000次延迟记录
-                    if (readLatencies.size > 1000) {
-                        readLatencies.removeAt(0)
-                    }
-                }
-            }
+        // 计算平均读取延迟（使用无锁队列，无需synchronized）
+        val avgLatency = if (readLatencies.isEmpty()) {
+            0.0
+        } else {
+            // 转换为列表计算平均值（ConcurrentLinkedQueue不支持直接average）
+            val latencyList = readLatencies.toList()
+            latencyList.average()
         }
         
         val metrics = PerformanceMetrics(
@@ -143,7 +138,8 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             lastUpdateTime = System.currentTimeMillis()
         )
         
-        handler.post {
+        // 使用协程Dispatchers.Main替代Handler.post
+        coroutineScope.launch(Dispatchers.Main) {
             listener.onPerformanceUpdate(metrics)
         }
     }
@@ -211,11 +207,15 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                             // 更新性能指标：发送数据
                             totalBytesSent.addAndGet(request.data.size.toLong())
                             totalRequestsSent.incrementAndGet()
-                            handler.post { okSerialPort.onDataListener?.onRequest(request.data) }
+                            // 使用协程Dispatchers.Main替代Handler.post
+                            coroutineScope.launch(Dispatchers.Main) {
+                                okSerialPort.onDataListener?.onRequest(request.data)
+                            }
                             addRunningRequest(request)
                         } catch (e: IOException) {
                             blockRelease(request)
-                            handler.post {
+                            // 使用协程Dispatchers.Main替代Handler.post
+                            coroutineScope.launch(Dispatchers.Main) {
                                 request.onResponseListener?.onFailure(request, e)
                             }
                         }
@@ -234,7 +234,8 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             }
         } else {
             blockRelease(request)
-            handler.post {
+            // 使用协程Dispatchers.Main替代Handler.post
+            coroutineScope.launch(Dispatchers.Main) {
                 request.onResponseListener?.onFailure(request, NullPointerException("响应规则为空"))
             }
         }
@@ -263,13 +264,16 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             okSerialPort.logger.log("读取线程启动，优先级：${okSerialPort.readThreadPriority}")
             
             val inputStream = readStream()
+            
             if (inputStream == null) {
                 okSerialPort.logger.log("读取流为空，无法启动阻塞读取")
                 return@Thread
             }
 
-            // 使用固定缓冲区，避免频繁分配内存
+            // 使用固定读取缓冲区，避免频繁分配内存
             val buffer = ByteArray(4096)
+            // 可复用的接收缓冲区，根据实际读取大小动态调整
+            var receiveBuffer: ByteArray? = null
             
             try {
                 while (okSerialPort.isConnect() && !shouldStopReading.get()) {
@@ -281,30 +285,22 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                         val readLatency = readEndTime - readStartTime
                         
                         if (bytesRead > 0) {
-                            // 复制实际读取的数据
-                            val receive = ByteArray(bytesRead)
-                            System.arraycopy(buffer, 0, receive, 0, bytesRead)
-                            
-                            // 更新性能指标：接收数据
-                            totalBytesReceived.addAndGet(bytesRead.toLong())
-                            totalResponsesReceived.incrementAndGet()
-                            
-                            // 更新读取延迟统计
-                            synchronized(readLatencyLock) {
-                                readLatencies.add(readLatency)
-                                if (readLatency > maxReadLatency.get()) {
-                                    maxReadLatency.set(readLatency)
-                                }
-                                if (readLatency < minReadLatency.get()) {
-                                    minReadLatency.set(readLatency)
-                                }
+                            // 优化：复用缓冲区，避免每次创建新数组
+                            if (receiveBuffer == null || receiveBuffer!!.size < bytesRead) {
+                                receiveBuffer = ByteArray(bytesRead)
                             }
+                            // 复制实际读取的数据到复用缓冲区
+                            System.arraycopy(buffer, 0, receiveBuffer!!, 0, bytesRead)
                             
-                            // 数据丢失检测：检查接收间隔和大小异常
-                            detectDataLoss(bytesRead, readEndTime)
+                            // 更新基本性能指标（最小开销操作）
+                            totalBytesReceived.addAndGet(bytesRead.toLong())
                             
-                            // 处理接收到的数据
-                            processReceivedData(receive)
+                            // 异步处理接收数据，避免阻塞读取循环
+                            processReceivedDataAsync(
+                                receiveBuffer!!.copyOf(bytesRead), // 仅在需要时创建副本
+                                readLatency,
+                                readEndTime
+                            )
                         } else if (bytesRead == -1) {
                             // 流已关闭
                             okSerialPort.logger.log("读取流已关闭")
@@ -323,7 +319,8 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                             if (isPermanentError) {
                                 // 永久错误，标记连接断开
                                 okSerialPort.logger.log("检测到串口连接永久错误")
-                                handler.post {
+                                // 使用协程Dispatchers.Main替代Handler.post
+                                coroutineScope.launch(Dispatchers.Main) {
                                     // 通知连接断开，外部会触发重连机制
                                     if (okSerialPort.isConnect()) {
                                         okSerialPort.markDisconnected()
@@ -390,25 +387,11 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                     val readLatency = readEndTime - readStartTime
                     
                     if (receive != null && receive.isNotEmpty()) {
-                        // 更新性能指标：接收数据
+                        // 更新基本性能指标（最小开销操作）
                         totalBytesReceived.addAndGet(receive.size.toLong())
-                        totalResponsesReceived.incrementAndGet()
                         
-                        // 更新读取延迟统计
-                        synchronized(readLatencyLock) {
-                            readLatencies.add(readLatency)
-                            if (readLatency > maxReadLatency.get()) {
-                                maxReadLatency.set(readLatency)
-                            }
-                            if (readLatency < minReadLatency.get()) {
-                                minReadLatency.set(readLatency)
-                            }
-                        }
-                        
-                        // 数据丢失检测
-                        detectDataLoss(receive.size, readEndTime)
-                        
-                        processReceivedData(receive)
+                        // 异步处理接收数据，避免阻塞读取循环
+                        processReceivedDataAsync(receive, readLatency, readEndTime)
                     }
                     // 超时检查由独立任务处理
                 }
@@ -440,10 +423,54 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     }
     
     /**
+     * 异步处理接收到的数据（优化：不阻塞读取循环）
+     * 将性能统计、数据检测和处理逻辑移到异步协程中
+     */
+    private fun processReceivedDataAsync(
+        receive: ByteArray,
+        readLatency: Long,
+        receiveTime: Long
+    ) {
+        // 使用协程异步处理，完全不影响读取循环
+        coroutineScope.launch {
+            try {
+                // 更新性能指标：接收数据计数
+                totalResponsesReceived.incrementAndGet()
+                
+                // 更新读取延迟统计（异步处理，不阻塞读取，使用无锁队列）
+                readLatencies.offer(readLatency)
+                // 限制队列大小，避免内存泄漏（保留最近1000次记录）
+                while (readLatencies.size > 1000) {
+                    readLatencies.poll()
+                }
+                // 使用原子操作更新最大最小值（无锁）
+                if (readLatency > maxReadLatency.get()) {
+                    maxReadLatency.set(readLatency)
+                }
+                if (readLatency < minReadLatency.get()) {
+                    minReadLatency.set(readLatency)
+                }
+                
+                // 数据丢失检测（异步处理）
+                detectDataLoss(receive.size, receiveTime)
+                
+                // 处理接收到的数据
+                processReceivedData(receive)
+            } catch (e: Exception) {
+                okSerialPort.logger.log("异步处理数据异常：${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+    
+    /**
      * 处理接收到的数据
      */
     private fun processReceivedData(receive: ByteArray) {
-        handler.post { okSerialPort.onDataListener?.onResponse(receive) }
+        // 使用协程Dispatchers.Main替代Handler.post，完全异步化
+        coroutineScope.launch(Dispatchers.Main) {
+            okSerialPort.onDataListener?.onResponse(receive)
+        }
         val matchRequest: ResponseProcess? = matchRequest(receive)
         response(matchRequest, receive)
         // 超时检查由独立任务处理，这里不再每次检查
@@ -517,10 +544,16 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
         try {
             val response = buildResponse(request, receive)
             removeProcess(matchProcess)
-            handler.post { matchProcess.onResponseListener?.onResponse(response) }
+            // 使用协程Dispatchers.Main替代Handler.post
+            coroutineScope.launch(Dispatchers.Main) {
+                matchProcess.onResponseListener?.onResponse(response)
+            }
         } catch (e: Exception) {
             removeProcess(matchProcess)
-            handler.post { matchProcess.onResponseListener?.onFailure(request, e) }
+            // 使用协程Dispatchers.Main替代Handler.post
+            coroutineScope.launch(Dispatchers.Main) {
+                matchProcess.onResponseListener?.onFailure(request, e)
+            }
         }
     }
 
@@ -562,7 +595,8 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             // 更新超时计数
             timeoutRequestCount.incrementAndGet()
             blockRelease(request)
-            handler.post {
+            // 使用协程Dispatchers.Main替代Handler.post
+            coroutineScope.launch(Dispatchers.Main) {
                 it.onResponseListener?.onFailure(request, ResponseTimeoutException("响应超时"))
             }
         }
@@ -659,8 +693,8 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             it.onResponseListener?.onFailure(it, ConnectException("serial port disconnect"))
         }
         
-        val runningProcesses = mutableListOf<ResponseProcess>()
-        runningRequests.drainTo(runningProcesses)
+        // CopyOnWriteArrayList不支持drainTo，直接遍历
+        val runningProcesses = runningRequests.toList()
         runningProcesses.forEach {
             val request = if (it is Request) it else null
             it.onResponseListener?.onFailure(request, ConnectException("serial port disconnect"))

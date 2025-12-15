@@ -13,11 +13,13 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.blankj.utilcode.util.AppUtils
 import com.blankj.utilcode.util.TimeUtils
 import com.chad.library.adapter4.BaseQuickAdapter
 import com.chad.library.adapter4.viewholder.QuickViewHolder
 import com.elvishew.xlog.XLog
 import com.ok.serialport.OkSerialPort
+import com.ok.serialport.data.PerformanceMetrics
 import com.ok.serialport.data.Request
 import com.ok.serialport.data.Response
 import com.ok.serialport.data.ResponseRule
@@ -25,6 +27,7 @@ import com.ok.serialport.demo.databinding.ActivityMainBinding
 import com.ok.serialport.jni.SerialPortFinder
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
+import com.ok.serialport.listener.OnPerformanceListener
 import com.ok.serialport.listener.OnResponseListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -240,6 +243,7 @@ class MainActivity : AppCompatActivity() {
             binding.viewOpenState.setBackgroundColor(Color.RED)
             return
         }
+        AppUtils.isAppRoot()
         serialClient = OkSerialPort.Builder()
             .devicePath(devicePath!!)
             .baudRate(baudRate!!)
@@ -255,7 +259,18 @@ class MainActivity : AppCompatActivity() {
 //                    }
 //                }
 //            })
+
             .build()
+        // 添加性能监听器
+        serialClient?.addPerformanceListener(object : OnPerformanceListener {
+            override fun onPerformanceUpdate(metrics: PerformanceMetrics) {
+                XLog.i("平均延迟: ${metrics.averageReadLatency}ms")
+                XLog.i("吞吐量: ${metrics.getAverageThroughput()} 字节/秒")
+                XLog.i("成功率: ${metrics.getSuccessRate()}%")
+                XLog.i("数据丢失: ${metrics.dataLossCount} 次")
+                XLog.i("超时请求: ${metrics.timeoutRequestCount} 个")
+            }
+        })
         serialClient?.addConnectListener(object : OnConnectListener {
             override fun onConnect(devicePath: String) {
                 binding.tvOpenState.text = "关闭"

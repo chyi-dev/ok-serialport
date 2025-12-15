@@ -73,7 +73,7 @@ class OkSerialPort private constructor(
     private val isReconnecting = AtomicBoolean(false)
 
     // 串口连接监听
-    private var onConnectListener: OnConnectListener? = null
+    var onConnectListener: OnConnectListener? = null
 
     // 串口全局数据监听
     internal var onDataListener: OnDataListener? = null
