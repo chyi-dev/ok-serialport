@@ -10,6 +10,8 @@ import com.ok.serialport.interceptor.Interceptor
 import com.ok.serialport.interceptor.RealInterceptorChain
 import com.ok.serialport.listener.OnConnectListener
 import com.ok.serialport.listener.OnDataListener
+import com.ok.serialport.stats.PerformanceStats
+import com.ok.serialport.stats.PerformanceStatsCollector
 import com.ok.serialport.stick.AbsStickPacketHandle
 import com.ok.serialport.stick.BaseStickPacketHandle
 import com.ok.serialport.utils.SerialLogger
@@ -53,13 +55,19 @@ class OkSerialPort private constructor(
     internal val stickPacketHandle: AbsStickPacketHandle,
     internal val responseRules: MutableList<ResponseRule>,
     internal val responseInterceptors: MutableList<Interceptor<Response>>,
-    private val requestInterceptors: MutableList<Interceptor<Request>>
+    private val requestInterceptors: MutableList<Interceptor<Request>>,
+    // 是否启用性能统计
+    internal val enablePerformanceStats: Boolean
 ) {
     private val serialPortProcess by lazy {
         SerialPortProcess(this)
     }
     private val isConnected = AtomicBoolean(false)
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
+    
+    // 性能统计收集器（仅在开启时初始化）
+    internal val performanceStatsCollector: PerformanceStatsCollector? = 
+        if (enablePerformanceStats) PerformanceStatsCollector() else null
 
     //重连次数
     private var retryTimes = 0
@@ -201,6 +209,14 @@ class OkSerialPort private constructor(
             onDataListener = null
         }
     }
+    
+    /**
+     * 获取性能统计信息
+     * @return 性能统计数据，如果未开启统计则返回 null
+     */
+    fun getPerformanceStats(): PerformanceStats? {
+        return performanceStatsCollector?.getStats()
+    }
 
     class Builder {
         // 串口地址
@@ -250,6 +266,9 @@ class OkSerialPort private constructor(
 
         // 请求拦截器
         private var requestInterceptors = mutableListOf<Interceptor<Request>>()
+        
+        // 是否启用性能统计
+        private var enablePerformanceStats: Boolean = false
 
         fun devicePath(devicePath: String) = apply {
             this.devicePath = devicePath
@@ -314,6 +333,14 @@ class OkSerialPort private constructor(
         fun addResponseInterceptor(interceptor: Interceptor<Response>) = apply {
             this.responseInterceptors.add(interceptor)
         }
+        
+        /**
+         * 启用性能统计
+         * @param enable 是否启用，默认为 true
+         */
+        fun enablePerformanceStats(enable: Boolean = true) = apply {
+            this.enablePerformanceStats = enable
+        }
 
         fun build(): OkSerialPort {
             require(devicePath != null) { "串口地址devicePath不能为空" }
@@ -331,7 +358,7 @@ class OkSerialPort private constructor(
             return OkSerialPort(
                 devicePath!!, baudRate!!, flags, dataBit, stopBit, parity, maxRetry, retryInterval,
                 sendInterval, readInterval, maxRequestSize, logger, stickPacketHandle,
-                responseRules, responseInterceptors, requestInterceptors
+                responseRules, responseInterceptors, requestInterceptors, enablePerformanceStats
             )
         }
     }

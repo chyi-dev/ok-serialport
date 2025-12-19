@@ -94,7 +94,7 @@ class MainActivity : AppCompatActivity() {
             if (byteArr != null) {
                 job = lifecycleScope.launch {
                     while (isActive) {
-                        delay(500)
+                        delay(50)
                         withContext(Dispatchers.Main) {
                             val request = Request(byteArr)
 //                                .blocking()
@@ -121,7 +121,6 @@ class MainActivity : AppCompatActivity() {
                     })
                     .onResponseListener(object : OnResponseListener {
                         override fun onResponse(response: Response) {
-                            addLog("发送", ByteUtils.byteArrToHexStr(response.data))
                         }
 
                         override fun onFailure(request: Request?, e: Exception) {
@@ -149,7 +148,6 @@ class MainActivity : AppCompatActivity() {
                     })
                     .onResponseListener(object : OnResponseListener {
                         override fun onResponse(response: Response) {
-                            addLog("发送", ByteUtils.byteArrToHexStr(response.data))
                         }
 
                         override fun onFailure(request: Request?, e: Exception) {
@@ -170,9 +168,13 @@ class MainActivity : AppCompatActivity() {
             if (byteArr != null) {
                 val request = Request(byteArr)
                     .responseCount(3)
+                    .addResponseRule(object : ResponseRule {
+                        override fun match(request: Request?, receive: ByteArray): Boolean {
+                            return receive.size >= 9 && receive[3] == 0x1E.toByte()
+                        }
+                    })
                     .onResponseListener(object : OnResponseListener {
                         override fun onResponse(response: Response) {
-                            addLog("发送", ByteUtils.byteArrToHexStr(response.data))
                             Log.i("Ok-Serial", "response onResponse:${response.toHex()}")
                         }
 
@@ -212,6 +214,28 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.etCommand.setText("AA 55 02 1E 1F")
+
+        binding.btnPerformanceStats.setOnClickListener {
+            val stats = serialClient?.getPerformanceStats()
+            stats?.let {
+                binding.tvPerformanceStats.text =
+                    "发送请求数:${it.totalSentRequests} " +
+                            "成功数:${it.successCount} " +
+                            "失败数:${it.failureCount} " +
+                            "超时数:${it.timeoutCount} " +
+                            "平均响应时间:${it.averageResponseTime} " +
+                            "总发送字节数:${it.totalSentBytes} " +
+                            "总接收字节数:${it.totalReceivedBytes} " +
+                            "最大响应时间:${it.maxResponseTime} " +
+                            "最小响应时间:${it.minResponseTime} " +
+                            "当前待发送队列大小:${it.currentQueueSize} " +
+                            "当前运行中请求数:${it.currentRunningRequests} " +
+                            "统计开始时间:${TimeUtils.millis2String(it.startTime)} " +
+                            "最后更新时间:${TimeUtils.millis2String(it.lastUpdateTime)} "
+
+                XLog.i(binding.tvPerformanceStats.text.toString())
+            }
+        }
     }
 
     private fun getData(): ByteArray? {
@@ -243,7 +267,8 @@ class MainActivity : AppCompatActivity() {
         serialClient = OkSerialPort.Builder()
             .devicePath(devicePath!!)
             .baudRate(baudRate!!)
-            .sendInterval(500)
+            .sendInterval(10)
+            .enablePerformanceStats(true)
 //            .addRequestInterceptor(RequestInterceptor())
 //            .addResponseInterceptor(ResponseInterceptor())
 //            .addResponseRule(object : ResponseRule {

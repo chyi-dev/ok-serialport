@@ -64,6 +64,9 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
         }
         request.sendTime = 0
         readyRequests.add(request)
+        
+        // 记录发送请求统计
+        okSerialPort.performanceStatsCollector?.recordSentRequest(request.data.size)
     }
 
     fun cancelRequest(request: Request): Boolean {
@@ -103,6 +106,8 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                             // IO异常，可能是串口断开或设备移除
                             blockRelease(request)
                             okSerialPort.logger.log("串口发送IO异常：${e.message}")
+                            // 记录失败统计
+                            okSerialPort.performanceStatsCollector?.recordFailure()
                             withContext(Dispatchers.Main) {
                                 request.onResponseListener?.onFailure(request, e)
                             }
@@ -110,6 +115,8 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                             // 其他异常
                             blockRelease(request)
                             okSerialPort.logger.log("串口发送异常：${e.message}")
+                            // 记录失败统计
+                            okSerialPort.performanceStatsCollector?.recordFailure()
                             withContext(Dispatchers.Main) {
                                 request.onResponseListener?.onFailure(request, e)
                             }
@@ -133,6 +140,8 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             runningRequests.add(request)
         } else {
             blockRelease(request)
+            // 记录失败统计（响应规则为空）
+            okSerialPort.performanceStatsCollector?.recordFailure()
             withContext(Dispatchers.Main) {
                 request.onResponseListener?.onFailure(request, NullPointerException("响应规则为空"))
             }
@@ -163,6 +172,9 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                         consecutiveErrors = 0
                         
                         if (receive != null && receive.isNotEmpty()) {
+                            // 记录接收响应统计
+                            okSerialPort.performanceStatsCollector?.recordReceivedResponse(receive.size)
+                            
                             // 处理接收到的数据
                             withContext(Dispatchers.Main) {
                                 okSerialPort.onDataListener?.onResponse(receive)
@@ -273,6 +285,12 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                     delay(TIMEOUT_CHECK_INTERVAL)
                     matchTimeoutRequest()
                     removeTimeoutRequest()
+                    
+                    // 异步更新队列状态统计，不影响主流程
+                    okSerialPort.performanceStatsCollector?.let { collector ->
+                        collector.updateQueueSize(readyRequests.size)
+                        collector.updateRunningRequests(runningRequests.size)
+                    }
                 }
             } catch (ignore: CancellationException) {
                 // 协程被取消，正常退出
@@ -302,11 +320,25 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
         try {
             val response = buildResponse(request, receive)
             removeProcess(matchProcess)
+            
+            // 计算响应时间并记录成功统计
+            // 只有当 matchProcess 是 Request 类型且 sendTime > 0 时才计算和记录响应时间
+            if (request != null && request.sendTime > 0) {
+                val responseTime = System.currentTimeMillis() - request.sendTime
+                okSerialPort.performanceStatsCollector?.recordSuccess(responseTime)
+            } else {
+                // 如果 request 为 null 或 sendTime <= 0，只记录成功数，不记录响应时间
+                // 这种情况可能是非 Request 类型的 ResponseProcess，或者 sendTime 未正确设置
+                okSerialPort.performanceStatsCollector?.recordSuccessWithoutTime()
+            }
+            
             withContext(Dispatchers.Main) {
                 matchProcess.onResponseListener?.onResponse(response)
             }
         } catch (e: Exception) {
             removeProcess(matchProcess)
+            // 记录失败统计
+            okSerialPort.performanceStatsCollector?.recordFailure()
             withContext(Dispatchers.Main) {
                 matchProcess.onResponseListener?.onFailure(request, e)
             }
@@ -346,7 +378,11 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
         
         val timeoutList = timeoutRequests.toList() // 创建快照避免并发修改
         runningRequests.removeAll(timeoutList.toSet())
+        
         timeoutList.forEach {
+            // 记录超时统计
+            okSerialPort.performanceStatsCollector?.recordTimeout()
+            
             val request = if (it is Request) {
                 it
             } else {
@@ -383,10 +419,14 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             val millis = System.currentTimeMillis()
             if (process.timeout > 0 && process.sendTime > 0 && millis - process.sendTime > process.timeout) {
                 if (!process.deductTimeoutRetryCount()) {
+                    // 还有重试次数，进行重试
+                    // 先从 runningRequests 中移除，避免重试期间被重复检测为超时
+                    runningRequests.remove(process)
                     process.sendTime = 0
                     blockRelease(process)
                     readyRequests.addLast(process)
                 } else {
+                    // 重试次数用完，标记为最终失败
                     timeoutRequests.add(process)
                 }
                 return true
