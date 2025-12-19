@@ -180,9 +180,9 @@ class OkSerialPort private constructor(
     private fun reconnect() {
         coroutineScope.launch {
             delay(retryInterval)
-            logger.log("开始重连，进度：${retryCount + 1} / $retryCount")
-            connect()
             retryTimes++
+            logger.log("开始重连，进度：$retryTimes / $retryCount")
+            connect()
             delay(100)
             if (retryTimes >= retryCount && !isConnect()) {
                 onConnectListener?.onDisconnect(devicePath, ReconnectFailException("重连失败"))
@@ -324,7 +324,7 @@ class OkSerialPort private constructor(
             require(parity >= 0) { "校验位不能小于0" }
             require(maxRetry >= 0) { "重试次数不能小于0" }
             require(retryInterval >= 500) { "重试时间间隔不能小于500毫秒" }
-            require(sendInterval >= 100) { "发送数据时间间隔不能小于100毫秒" }
+            require(sendInterval >= 1) { "发送数据时间间隔不能小于100毫秒" }
             require(readInterval >= 1) { "读取数据时间间隔不能小于1毫秒" }
             require(maxRequestSize in 1..10000) { "队列容量区间为1-10000" }
 

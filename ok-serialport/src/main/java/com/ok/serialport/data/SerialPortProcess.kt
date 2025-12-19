@@ -16,8 +16,10 @@ import java.io.IOException
 import java.net.ConnectException
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -37,21 +39,28 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     private lateinit var coroutineScope: CoroutineScope
     private var sendJob: Job? = null
     private var readJob: Job? = null
+    private var timeoutCheckJob: Job? = null
     private val readyRequests = ConcurrentLinkedDeque<Request>()
     private val runningRequests = ConcurrentLinkedQueue<ResponseProcess>()
-    private val timeoutRequests = mutableListOf<ResponseProcess>()
+    private val timeoutRequests = CopyOnWriteArrayList<ResponseProcess>()
     private val isBlocking = AtomicBoolean(false)
-    private var blockingRequest: Request? = null
+    private val blockingRequest = AtomicReference<Request?>(null)
+    
+    companion object {
+        // 超时检查间隔（毫秒）
+        private const val TIMEOUT_CHECK_INTERVAL = 100L
+    }
 
     fun start(coroutineScope: CoroutineScope) {
         this.coroutineScope = coroutineScope
         startRead()
         startSend()
+        startTimeoutCheck()
     }
 
     fun addRequest(request: Request) {
         if (readyRequests.size > okSerialPort.maxRequestSize) {
-            throw RejectedExecutionException("串口队列超出处理容量。处理容量最大为：100")
+            throw RejectedExecutionException("串口队列超出处理容量。处理容量最大为：${okSerialPort.maxRequestSize}")
         }
         request.sendTime = 0
         readyRequests.add(request)
@@ -83,7 +92,7 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                         try {
                             if (request.isBlock) {
                                 isBlocking.set(true)
-                                blockingRequest = request
+                                blockingRequest.set(request)
                             }
                             write(request.data)
                             withContext(Dispatchers.Main) {
@@ -112,7 +121,7 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             } finally {
                 // 确保阻塞状态被释放
                 isBlocking.set(false)
-                blockingRequest = null
+                blockingRequest.set(null)
             }
         }
     }
@@ -120,9 +129,8 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     private suspend fun addRunningRequest(request: Request) {
         if (request.responseRules.isNotEmpty() || okSerialPort.responseRules.isNotEmpty()) {
             request.sendTime = System.currentTimeMillis()
-            if (!runningRequests.contains(request)) {
-                runningRequests.add(request)
-            }
+            // 直接添加，Request 对象应该是唯一的，不需要 O(n) 的 contains 检查
+            runningRequests.add(request)
         } else {
             blockRelease(request)
             withContext(Dispatchers.Main) {
@@ -166,10 +174,6 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
                             okSerialPort.logger.log("串口输入流已关闭")
                             break
                         }
-                        
-                        // 检查超时请求（即使没有新数据也要检查）
-                        matchTimeoutRequest()
-                        removeTimeoutRequest()
                         
                     } catch (e: EOFException) {
                         // 流结束异常，永久错误
@@ -221,31 +225,61 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     }
 
     private fun matchRequest(receive: ByteArray): ResponseProcess? {
+        if (runningRequests.isEmpty()) {
+            return null
+        }
+        
         val iterator = runningRequests.iterator()
         var matchProcess: ResponseProcess? = null
         while (iterator.hasNext()) {
             val process = iterator.next()
-            if (isTimeout(process)) continue
+            if (process == null || isTimeout(process)) continue
+            
             val request = if (process is Request) {
                 process
             } else {
                 null
             }
-            if (process.isResponseRule()) {
-                if (process.match(request, receive)) {
+            
+            try {
+                if (process.isResponseRule()) {
+                    if (process.match(request, receive)) {
+                        matchProcess = process
+                        timeoutRequests.remove(process)
+                        break
+                    }
+                } else if (match(request, receive)) {
                     matchProcess = process
                     timeoutRequests.remove(process)
                     break
                 }
-            } else if (match(request, receive)) {
-                matchProcess = process
-                timeoutRequests.remove(process)
-                break
+            } catch (e: Exception) {
+                // 匹配过程中出现异常，记录日志但继续匹配下一个
+                okSerialPort.logger.log("请求匹配异常：${e.message}")
+                continue
             }
         }
         return matchProcess
     }
 
+    /**
+     * 启动超时检查协程，定时检查请求是否超时
+     */
+    private fun startTimeoutCheck() {
+        if (timeoutCheckJob?.isActive == true) return
+        timeoutCheckJob = coroutineScope.launch {
+            try {
+                while (okSerialPort.isConnect() && isActive) {
+                    delay(TIMEOUT_CHECK_INTERVAL)
+                    matchTimeoutRequest()
+                    removeTimeoutRequest()
+                }
+            } catch (ignore: CancellationException) {
+                // 协程被取消，正常退出
+            }
+        }
+    }
+    
     private fun matchTimeoutRequest() {
         val iterator = runningRequests.iterator()
         while (iterator.hasNext()) {
@@ -300,26 +334,34 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
         if (process !is Request) {
             return
         }
-        if (blockingRequest != null && process == blockingRequest) {
+        val currentBlocking = blockingRequest.get()
+        if (currentBlocking != null && process == currentBlocking) {
             isBlocking.set(false)
-            blockingRequest = null
+            blockingRequest.set(null)
         }
     }
 
     private suspend fun removeTimeoutRequest() {
-        runningRequests.removeAll(timeoutRequests.toSet())
-        timeoutRequests.forEach {
+        if (timeoutRequests.isEmpty()) return
+        
+        val timeoutList = timeoutRequests.toList() // 创建快照避免并发修改
+        runningRequests.removeAll(timeoutList.toSet())
+        timeoutList.forEach {
             val request = if (it is Request) {
                 it
             } else {
                 null
             }
             blockRelease(request)
-            withContext(Dispatchers.Main) {
-                it.onResponseListener?.onFailure(request, ResponseTimeoutException("响应超时"))
+            try {
+                withContext(Dispatchers.Main) {
+                    it.onResponseListener?.onFailure(request, ResponseTimeoutException("响应超时"))
+                }
+            } catch (e: Exception) {
+                okSerialPort.logger.log("超时回调异常：${e.message}")
             }
         }
-        timeoutRequests.clear()
+        timeoutRequests.removeAll(timeoutList)
     }
 
     private fun match(request: Request?, receive: ByteArray): Boolean {
@@ -357,24 +399,47 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
      * 取消
      */
     override fun disconnect() {
-        // 取消读取和发送协程
+        // 取消读取、发送和超时检查协程
         readJob?.cancel(cause = CancellationException("Read job canceled"))
         sendJob?.cancel(cause = CancellationException("Send job canceled"))
+        timeoutCheckJob?.cancel(cause = CancellationException("Timeout check job canceled"))
         
         // 释放阻塞状态
         isBlocking.set(false)
-        blockingRequest = null
+        blockingRequest.set(null)
         
         // 关闭底层串口连接
         super.disconnect()
+        
+        // 清理待发送请求，使用 try-catch 保护每个回调
         readyRequests.forEach {
-            it.onResponseListener?.onFailure(it, ConnectException("serial port disconnect"))
-        }
-        runningRequests.forEach {
-            if (it is Request) {
+            try {
                 it.onResponseListener?.onFailure(it, ConnectException("serial port disconnect"))
-            } else {
-                it.onResponseListener?.onFailure(null, ConnectException("serial port disconnect"))
+            } catch (e: Exception) {
+                okSerialPort.logger.log("清理待发送请求回调异常：${e.message}")
+            }
+        }
+        
+        // 清理运行中的请求，使用 try-catch 保护每个回调
+        runningRequests.forEach {
+            try {
+                if (it is Request) {
+                    it.onResponseListener?.onFailure(it, ConnectException("serial port disconnect"))
+                } else {
+                    it.onResponseListener?.onFailure(null, ConnectException("serial port disconnect"))
+                }
+            } catch (e: Exception) {
+                okSerialPort.logger.log("清理运行中请求回调异常：${e.message}")
+            }
+        }
+        
+        // 清理超时请求，使用 try-catch 保护每个回调
+        timeoutRequests.forEach {
+            try {
+                val request = if (it is Request) it else null
+                it.onResponseListener?.onFailure(request, ConnectException("serial port disconnect"))
+            } catch (e: Exception) {
+                okSerialPort.logger.log("清理超时请求回调异常：${e.message}")
             }
         }
         

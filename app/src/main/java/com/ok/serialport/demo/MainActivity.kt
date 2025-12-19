@@ -94,7 +94,7 @@ class MainActivity : AppCompatActivity() {
             if (byteArr != null) {
                 job = lifecycleScope.launch {
                     while (isActive) {
-                        delay(200)
+                        delay(10)
                         withContext(Dispatchers.Main) {
                             val request = Request(byteArr)
 //                                .blocking()
@@ -243,7 +243,7 @@ class MainActivity : AppCompatActivity() {
         serialClient = OkSerialPort.Builder()
             .devicePath(devicePath!!)
             .baudRate(baudRate!!)
-            .sendInterval(100)
+            .sendInterval(10)
 //            .addRequestInterceptor(RequestInterceptor())
 //            .addResponseInterceptor(ResponseInterceptor())
 //            .addResponseRule(object : ResponseRule {
