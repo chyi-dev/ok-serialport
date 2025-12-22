@@ -217,6 +217,14 @@ class OkSerialPort private constructor(
     fun getPerformanceStats(): PerformanceStats? {
         return performanceStatsCollector?.getStats()
     }
+    
+    /**
+     * 重置性能统计数据
+     * 如果未开启统计，则不做任何操作
+     */
+    fun resetPerformanceStats() {
+        performanceStatsCollector?.reset()
+    }
 
     class Builder {
         // 串口地址

@@ -15,7 +15,7 @@ class PerformanceStatsCollector {
         // 响应时间样本最大数量，用于计算平均值
         private const val MAX_RESPONSE_TIME_SAMPLES = 1000
     }
-    
+
     // 计数器
     private val totalSentRequests = AtomicLong(0)
     private val totalReceivedResponses = AtomicLong(0)
@@ -24,20 +24,20 @@ class PerformanceStatsCollector {
     private val timeoutCount = AtomicLong(0)
     private val totalSentBytes = AtomicLong(0)
     private val totalReceivedBytes = AtomicLong(0)
-    
+
     // 响应时间统计
     private val responseTimeSamples = ConcurrentLinkedQueue<Long>()
     private val maxResponseTime = AtomicLong(0)
     private val minResponseTime = AtomicLong(Long.MAX_VALUE)
-    
+
     // 队列状态（需要外部更新）
     private val currentQueueSize = AtomicInteger(0)
     private val currentRunningRequests = AtomicInteger(0)
-    
+
     // 时间戳
-    private val startTime = System.currentTimeMillis()
+    private var startTime = System.currentTimeMillis()
     private val lastUpdateTime = AtomicLong(startTime)
-    
+
     /**
      * 记录发送请求
      */
@@ -46,7 +46,7 @@ class PerformanceStatsCollector {
         totalSentBytes.addAndGet(bytes.toLong())
         lastUpdateTime.set(System.currentTimeMillis())
     }
-    
+
     /**
      * 记录接收响应
      */
@@ -55,7 +55,7 @@ class PerformanceStatsCollector {
         totalReceivedBytes.addAndGet(bytes.toLong())
         lastUpdateTime.set(System.currentTimeMillis())
     }
-    
+
     /**
      * 记录成功响应
      */
@@ -64,7 +64,7 @@ class PerformanceStatsCollector {
         recordResponseTime(responseTime)
         lastUpdateTime.set(System.currentTimeMillis())
     }
-    
+
     /**
      * 记录成功但不记录响应时间（用于非 Request 类型的 ResponseProcess）
      */
@@ -72,7 +72,7 @@ class PerformanceStatsCollector {
         successCount.incrementAndGet()
         lastUpdateTime.set(System.currentTimeMillis())
     }
-    
+
     /**
      * 记录失败
      */
@@ -80,7 +80,7 @@ class PerformanceStatsCollector {
         failureCount.incrementAndGet()
         lastUpdateTime.set(System.currentTimeMillis())
     }
-    
+
     /**
      * 记录超时
      */
@@ -88,32 +88,32 @@ class PerformanceStatsCollector {
         timeoutCount.incrementAndGet()
         lastUpdateTime.set(System.currentTimeMillis())
     }
-    
+
     /**
      * 记录响应时间
      */
     private fun recordResponseTime(responseTime: Long) {
         // 添加到样本队列
         responseTimeSamples.offer(responseTime)
-        
+
         // 限制样本数量，移除最旧的样本
         while (responseTimeSamples.size > MAX_RESPONSE_TIME_SAMPLES) {
             responseTimeSamples.poll()
         }
-        
+
         // 更新最大响应时间（使用循环 CAS 操作，API 21 兼容）
         var current = maxResponseTime.get()
         while (responseTime > current && !maxResponseTime.compareAndSet(current, responseTime)) {
             current = maxResponseTime.get()
         }
-        
+
         // 更新最小响应时间（使用循环 CAS 操作，API 21 兼容）
         current = minResponseTime.get()
         while (responseTime < current && !minResponseTime.compareAndSet(current, responseTime)) {
             current = minResponseTime.get()
         }
     }
-    
+
     /**
      * 更新队列大小
      */
@@ -121,7 +121,7 @@ class PerformanceStatsCollector {
         currentQueueSize.set(size)
         lastUpdateTime.set(System.currentTimeMillis())
     }
-    
+
     /**
      * 更新运行中请求数
      */
@@ -129,7 +129,7 @@ class PerformanceStatsCollector {
         currentRunningRequests.set(count)
         lastUpdateTime.set(System.currentTimeMillis())
     }
-    
+
     /**
      * 获取当前统计快照
      */
@@ -141,13 +141,13 @@ class PerformanceStatsCollector {
         } else {
             0L
         }
-        
+
         val minTime = if (minResponseTime.get() == Long.MAX_VALUE) {
             0L
         } else {
             minResponseTime.get()
         }
-        
+
         return PerformanceStats(
             totalSentRequests = totalSentRequests.get(),
             totalReceivedResponses = totalReceivedResponses.get(),
@@ -165,7 +165,7 @@ class PerformanceStatsCollector {
             lastUpdateTime = lastUpdateTime.get()
         )
     }
-    
+
     /**
      * 重置统计数据
      */
@@ -182,6 +182,7 @@ class PerformanceStatsCollector {
         minResponseTime.set(Long.MAX_VALUE)
         currentQueueSize.set(0)
         currentRunningRequests.set(0)
+        startTime = System.currentTimeMillis()
         lastUpdateTime.set(System.currentTimeMillis())
     }
 }
