@@ -1,6 +1,8 @@
 package com.ok.serialport.data
 
 import com.ok.serialport.OkSerialPort
+import com.ok.serialport.exception.AckTimeoutException
+import com.ok.serialport.exception.DataTimeoutException
 import com.ok.serialport.exception.ResponseTimeoutException
 import com.ok.serialport.interceptor.RealInterceptorChain
 import com.ok.serialport.jni.SerialPort
@@ -249,16 +251,61 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
             }
 
             try {
-                if (process.isResponseRule()) {
-                    if (process.match(request, receive)) {
+                // 检查是否是配置了ACK/NAK的请求
+                if (request?.ackNakConfig != null) {
+                    // 根据当前阶段选择匹配逻辑
+                    when (process.currentPhase) {
+                        RequestPhase.WAITING_ACK -> {
+                            // ACK阶段：匹配ACK或NAK
+                            val config = request.ackNakConfig!!
+                            if (config.isAck(receive)) {
+                                // 匹配到ACK
+                                okSerialPort.logger.log("请求[${request.tag}]匹配到ACK响应")
+                                matchProcess = process
+                                timeoutRequests.remove(process)
+                                break
+                            } else if (config.hasNakRule() && config.isNak(receive)) {
+                                // 匹配到NAK
+                                okSerialPort.logger.log("请求[${request.tag}]匹配到NAK响应")
+                                matchProcess = process
+                                timeoutRequests.remove(process)
+                                break
+                            }
+                            // 既不是ACK也不是NAK，继续等待
+                            continue
+                        }
+                        RequestPhase.WAITING_DATA -> {
+                            // 数据阶段：使用原有响应规则匹配
+                            if (process.isResponseRule()) {
+                                if (process.match(request, receive)) {
+                                    matchProcess = process
+                                    timeoutRequests.remove(process)
+                                    break
+                                }
+                            } else if (match(request, receive)) {
+                                matchProcess = process
+                                timeoutRequests.remove(process)
+                                break
+                            }
+                        }
+                        RequestPhase.COMPLETED -> {
+                            // 已完成，不应该还在runningRequests中
+                            continue
+                        }
+                    }
+                } else {
+                    // 普通请求（没有ACK/NAK配置），使用原有逻辑
+                    if (process.isResponseRule()) {
+                        if (process.match(request, receive)) {
+                            matchProcess = process
+                            timeoutRequests.remove(process)
+                            break
+                        }
+                    } else if (match(request, receive)) {
                         matchProcess = process
                         timeoutRequests.remove(process)
                         break
                     }
-                } else if (match(request, receive)) {
-                    matchProcess = process
-                    timeoutRequests.remove(process)
-                    break
                 }
             } catch (e: Exception) {
                 // 匹配过程中出现异常，记录日志但继续匹配下一个
@@ -312,30 +359,133 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
         } else {
             null
         }
+
+        // 检查是否是配置了ACK/NAK的请求且处于ACK阶段
+        if (request?.ackNakConfig != null && matchProcess.currentPhase == RequestPhase.WAITING_ACK) {
+            handleAckNakResponse(matchProcess, request, receive)
+            return
+        }
+
+        // 普通响应处理或ACK/NAK模式的数据阶段处理
         try {
             val response = buildResponse(request, receive)
-            removeProcess(matchProcess)
+
+            // 判断是否是ACK/NAK模式的数据阶段
+            val isDataPhase = request?.ackNakConfig != null && matchProcess.currentPhase == RequestPhase.WAITING_DATA
+
+            if (isDataPhase) {
+                // 数据阶段：使用数据阶段计数
+                if (matchProcess.deductDataCount()) {
+                    // 数据响应次数已耗尽，移除请求
+                    removeProcess(matchProcess)
+                    matchProcess.markCompleted()
+                }
+                // 否则保持请求在runningRequests中，继续等待更多数据响应
+            } else {
+                // 普通请求，使用原有计数逻辑
+                removeProcess(matchProcess)
+            }
 
             // 计算响应时间并记录成功统计
-            // 只有当 matchProcess 是 Request 类型且 sendTime > 0 时才计算和记录响应时间
             if (request != null && request.sendTime > 0) {
                 val responseTime = System.currentTimeMillis() - request.sendTime
                 okSerialPort.performanceStatsCollector?.recordSuccess(responseTime)
             } else {
-                // 如果 request 为 null 或 sendTime <= 0，只记录成功数，不记录响应时间
-                // 这种情况可能是非 Request 类型的 ResponseProcess，或者 sendTime 未正确设置
                 okSerialPort.performanceStatsCollector?.recordSuccessWithoutTime()
             }
 
             withContext(Dispatchers.Main) {
-                matchProcess.onResponseListener?.onResponse(response)
+                if (isDataPhase) {
+                    // ACK/NAK模式下，调用onDataReceived（内部会fallback到onResponse）
+                    matchProcess.onResponseListener?.onDataReceived(response)
+                } else {
+                    matchProcess.onResponseListener?.onResponse(response)
+                }
             }
         } catch (e: Exception) {
             removeProcess(matchProcess)
-            // 记录失败统计
             okSerialPort.performanceStatsCollector?.recordFailure()
             withContext(Dispatchers.Main) {
                 matchProcess.onResponseListener?.onFailure(request, e)
+            }
+        }
+    }
+
+    /**
+     * 处理ACK/NAK响应
+     *
+     * @param matchProcess 匹配的响应处理对象
+     * @param request 请求对象
+     * @param receive 接收到的数据
+     */
+    private suspend fun handleAckNakResponse(
+        matchProcess: ResponseProcess,
+        request: Request,
+        receive: ByteArray
+    ) {
+        val config = request.ackNakConfig!!
+
+        when {
+            config.isAck(receive) -> {
+                // 收到ACK确认
+                okSerialPort.logger.log("请求[${request.tag}]收到ACK确认")
+
+                withContext(Dispatchers.Main) {
+                    matchProcess.onResponseListener?.onAckReceived(request)
+                }
+
+                if (config.waitData) {
+                    // 需要等待数据，进入数据阶段
+                    okSerialPort.logger.log("请求[${request.tag}]进入数据等待阶段")
+                    matchProcess.enterDataPhase(
+                        dataCount = matchProcess.count,
+                        dataRetry = request.timeoutRetry
+                    )
+                    // 不调用removeProcess，保持请求在runningRequests中继续等待数据
+                } else {
+                    // 不需要等待数据，直接完成
+                    okSerialPort.logger.log("请求[${request.tag}]ACK确认完成，不等待数据")
+                    removeProcess(matchProcess)
+                    matchProcess.markCompleted()
+
+                    // 计算响应时间
+                    if (request.sendTime > 0) {
+                        val responseTime = System.currentTimeMillis() - request.sendTime
+                        okSerialPort.performanceStatsCollector?.recordSuccess(responseTime)
+                    } else {
+                        okSerialPort.performanceStatsCollector?.recordSuccessWithoutTime()
+                    }
+                }
+            }
+            config.hasNakRule() && config.isNak(receive) -> {
+                // 收到NAK响应，需要重试
+                okSerialPort.logger.log("请求[${request.tag}]收到NAK响应")
+
+                withContext(Dispatchers.Main) {
+                    matchProcess.onResponseListener?.onNakReceived(request)
+                }
+
+                if (!request.deductAckRetryCount()) {
+                    // 还有ACK重试次数，进行重试
+                    okSerialPort.logger.log("请求[${request.tag}]进行ACK重试，剩余重试次数：${request.ackRetryCount}")
+                    runningRequests.remove(matchProcess)
+                    matchProcess.resetToAckPhase()
+                    request.sendTime = 0
+                    blockRelease(request)
+                    readyRequests.addLast(request)
+                } else {
+                    // ACK重试次数已耗尽，标记为失败
+                    okSerialPort.logger.log("请求[${request.tag}]ACK重试次数耗尽，标记为失败")
+                    removeProcess(matchProcess)
+                    okSerialPort.performanceStatsCollector?.recordFailure()
+                    withContext(Dispatchers.Main) {
+                        matchProcess.onResponseListener?.onFailure(request, AckTimeoutException("收到NAK响应且ACK重试次数已耗尽"))
+                    }
+                }
+            }
+            else -> {
+                // 不应该走到这里，因为matchRequest已经过滤过了
+                okSerialPort.logger.log("请求[${request.tag}]ACK/NAK匹配异常，数据不匹配ACK也不匹配NAK")
             }
         }
     }
@@ -374,19 +524,42 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
         val timeoutList = timeoutRequests.toList() // 创建快照避免并发修改
         runningRequests.removeAll(timeoutList.toSet())
 
-        timeoutList.forEach {
+        timeoutList.forEach { process ->
             // 记录超时统计
             okSerialPort.performanceStatsCollector?.recordTimeout()
 
-            val request = if (it is Request) {
-                it
+            val request = if (process is Request) {
+                process
             } else {
                 null
             }
             blockRelease(request)
+
             try {
                 withContext(Dispatchers.Main) {
-                    it.onResponseListener?.onFailure(request, ResponseTimeoutException("响应超时"))
+                    // 判断超时类型并调用相应回调
+                    if (request != null && request.ackNakConfig != null) {
+                        // ACK/NAK模式下的超时
+                        when (process.currentPhase) {
+                            RequestPhase.WAITING_ACK -> {
+                                // ACK阶段超时
+                                process.onResponseListener?.onAckTimeout(request)
+                                process.onResponseListener?.onFailure(request, AckTimeoutException("ACK响应超时，重试次数已耗尽"))
+                            }
+                            RequestPhase.WAITING_DATA -> {
+                                // 数据阶段超时
+                                process.onResponseListener?.onDataTimeout(request)
+                                process.onResponseListener?.onFailure(request, DataTimeoutException("数据响应超时，重试次数已耗尽"))
+                            }
+                            else -> {
+                                // 其他情况，使用通用超时回调
+                                process.onResponseListener?.onFailure(request, ResponseTimeoutException("响应超时"))
+                            }
+                        }
+                    } else {
+                        // 普通请求超时
+                        process.onResponseListener?.onFailure(request, ResponseTimeoutException("响应超时"))
+                    }
                 }
             } catch (e: Exception) {
                 okSerialPort.logger.log("超时回调异常：${e.message}")
@@ -410,12 +583,72 @@ class SerialPortProcess(private val okSerialPort: OkSerialPort) : SerialPort(
     }
 
     private fun isTimeout(process: ResponseProcess?): Boolean {
-        if (process is Request) {
-            val millis = System.currentTimeMillis()
+        if (process !is Request) return false
+
+        val millis = System.currentTimeMillis()
+        val config = process.ackNakConfig
+
+        // 检查是否是配置了ACK/NAK的请求
+        if (config != null) {
+            // ACK/NAK模式下的超时处理
+            return when (process.currentPhase) {
+                RequestPhase.WAITING_ACK -> {
+                    // ACK阶段超时检查
+                    val ackTimeout = process.getAckTimeout()
+                    if (ackTimeout > 0 && process.sendTime > 0 && millis - process.sendTime > ackTimeout) {
+                        // ACK超时
+                        okSerialPort.logger.log("请求[${process.tag}]ACK阶段超时")
+
+                        if (!process.deductAckRetryCount()) {
+                            // 还有ACK重试次数，进行重试（重新发送指令）
+                            okSerialPort.logger.log("请求[${process.tag}]进行ACK超时重试，剩余重试次数：${process.ackRetryCount}")
+                            runningRequests.remove(process)
+                            process.resetToAckPhase()
+                            process.sendTime = 0
+                            blockRelease(process)
+                            readyRequests.addLast(process)
+                        } else {
+                            // ACK重试次数已耗尽
+                            okSerialPort.logger.log("请求[${process.tag}]ACK重试次数耗尽，标记为超时失败")
+                            timeoutRequests.add(process)
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                RequestPhase.WAITING_DATA -> {
+                    // 数据阶段超时检查
+                    val dataTimeout = process.getDataTimeout()
+                    if (dataTimeout > 0 && process.isDataTimeout(dataTimeout)) {
+                        // 数据阶段超时
+                        okSerialPort.logger.log("请求[${process.tag}]数据阶段超时")
+
+                        if (!process.deductDataRetryCount()) {
+                            // 还有数据重试次数，继续等待数据（不重新发送指令）
+                            okSerialPort.logger.log("请求[${process.tag}]进行数据阶段重试，继续等待数据，剩余重试次数：${process.dataRetryCount}")
+                            // 重置数据阶段开始时间
+                            process.ackReceiveTime = System.currentTimeMillis()
+                        } else {
+                            // 数据重试次数已耗尽
+                            okSerialPort.logger.log("请求[${process.tag}]数据阶段重试次数耗尽，标记为超时失败")
+                            timeoutRequests.add(process)
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                RequestPhase.COMPLETED -> {
+                    // 已完成，不应该还在runningRequests中
+                    false
+                }
+            }
+        } else {
+            // 普通请求的超时处理（原有逻辑）
             if (process.timeout > 0 && process.sendTime > 0 && millis - process.sendTime > process.timeout) {
                 if (!process.deductTimeoutRetryCount()) {
                     // 还有重试次数，进行重试
-                    // 先从 runningRequests 中移除，避免重试期间被重复检测为超时
                     runningRequests.remove(process)
                     process.sendTime = 0
                     blockRelease(process)

@@ -18,6 +18,7 @@ import com.chad.library.adapter4.BaseQuickAdapter
 import com.chad.library.adapter4.viewholder.QuickViewHolder
 import com.elvishew.xlog.XLog
 import com.ok.serialport.OkSerialPort
+import com.ok.serialport.data.AckNakConfig
 import com.ok.serialport.data.Request
 import com.ok.serialport.data.Response
 import com.ok.serialport.data.ResponseRule
@@ -213,6 +214,101 @@ class MainActivity : AppCompatActivity() {
                 serialClient?.request(request)
             }
         }
+
+        // ACK/NAK示例 - 带数据等待
+        binding.btnAckNakWithData?.setOnClickListener {
+            val byteArr = getData()
+            if (byteArr != null) {
+                // 配置ACK/NAK，假设：ACK=0x06，NAK=0x15，等待数据响应
+                val request = Request(byteArr)
+                    .tag("ACK-NAK-WithData")
+                    .ackNakConfig(
+                        AckNakConfig.Builder()
+                            .ackRule { data -> data.isNotEmpty() && data[0] == 0x06.toByte() }
+                            .nakRule { data -> data.isNotEmpty() && data[0] == 0x15.toByte() }
+                            .waitData(true)              // 收到ACK后继续等待数据
+                            .ackTimeout(1000L)           // ACK超时1秒
+                            .ackRetryCount(3)            // ACK失败重试3次
+                            .dataTimeout(3000L)          // 数据超时3秒
+                            .build()
+                    )
+                    .addResponseRule(object : ResponseRule {
+                        override fun match(request: Request?, receive: ByteArray): Boolean {
+                            // 数据响应规则（排除ACK/NAK）
+                            return receive.size >= 5 && receive[0] != 0x06.toByte() && receive[0] != 0x15.toByte()
+                        }
+                    })
+                    .onResponseListener(object : OnResponseListener {
+                        override fun onAckReceived(request: Request) {
+                            Log.i("Ok-Serial", "ACK-NAK: 收到ACK确认")
+                            addLog("ACK/NAK", "收到ACK确认，继续等待数据...")
+                        }
+
+                        override fun onNakReceived(request: Request) {
+                            Log.i("Ok-Serial", "ACK-NAK: 收到NAK，将自动重试")
+                            addLog("ACK/NAK", "收到NAK，触发ACK重试")
+                        }
+
+                        override fun onDataReceived(response: Response) {
+                            Log.i("Ok-Serial", "ACK-NAK: 收到数据: ${response.toHex()}")
+                            addLog("ACK/NAK数据", response.toHex())
+                        }
+
+                        override fun onResponse(response: Response) {
+                            // 在非ACK/NAK模式下会调用，这里不会调用（因为有onDataReceived）
+                        }
+
+                        override fun onFailure(request: Request?, e: Exception) {
+                            Log.i("Ok-Serial", "ACK-NAK: 失败: ${e.message}")
+                            addLog("ACK/NAK", "失败: ${e.message}")
+                            Toast.makeText(this@MainActivity, "ACK/NAK失败: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    })
+                serialClient?.request(request)
+            }
+        }
+
+        // ACK/NAK示例 - 不等待数据（收到ACK即完成）
+        binding.btnAckNakNoData?.setOnClickListener {
+            val byteArr = getData()
+            if (byteArr != null) {
+                // 配置ACK/NAK，假设：ACK=0x06，NAK=0x15，不等待数据
+                val request = Request(byteArr)
+                    .tag("ACK-NAK-NoData")
+                    .ackNakConfig(
+                        AckNakConfig.Builder()
+                            .ackRule { data -> data.isNotEmpty() && data[0] == 0x06.toByte() }
+                            .nakRule { data -> data.isNotEmpty() && data[0] == 0x15.toByte() }
+                            .waitData(false)             // 收到ACK即完成，不等待数据
+                            .ackTimeout(1000L)           // ACK超时1秒
+                            .ackRetryCount(2)            // ACK失败重试2次
+                            .build()
+                    )
+                    .onResponseListener(object : OnResponseListener {
+                        override fun onAckReceived(request: Request) {
+                            Log.i("Ok-Serial", "ACK-NAK-NoData: 收到ACK确认，流程完成")
+                            addLog("ACK/NAK", "收到ACK确认（不等待数据），流程完成")
+                        }
+
+                        override fun onNakReceived(request: Request) {
+                            Log.i("Ok-Serial", "ACK-NAK-NoData: 收到NAK，将自动重试")
+                            addLog("ACK/NAK", "收到NAK，触发重试")
+                        }
+
+                        override fun onResponse(response: Response) {
+                            // waitData=false时，onAckReceived已经处理完成，这里不会调用
+                        }
+
+                        override fun onFailure(request: Request?, e: Exception) {
+                            Log.i("Ok-Serial", "ACK-NAK-NoData: 失败: ${e.message}")
+                            addLog("ACK/NAK", "失败: ${e.message}")
+                            Toast.makeText(this@MainActivity, "ACK/NAK失败: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    })
+                serialClient?.request(request)
+            }
+        }
+
         binding.etCommand.setText("AA 55 02 1E 1F")
 
         binding.btnPerformanceStats.setOnClickListener {
