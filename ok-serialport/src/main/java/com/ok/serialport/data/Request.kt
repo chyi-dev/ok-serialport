@@ -45,7 +45,7 @@ class Request(var data: ByteArray) : ResponseProcess() {
     /**
      * 数据阶段超时时间（内部使用，ACK/NAK流程中有效）
      */
-    internal var dataTimeout: Long = -1L
+    internal var _dataTimeout: Long = -1L
 
     /**
      * 请求数据
@@ -114,7 +114,7 @@ class Request(var data: ByteArray) : ResponseProcess() {
         this.ackRetryCount = config.ackRetryCount
         // 如果配置了数据超时，保存它
         if (config.dataTimeout > 0) {
-            this.dataTimeout = config.dataTimeout
+            this._dataTimeout = config.dataTimeout
         }
         return this
     }
@@ -233,7 +233,7 @@ class Request(var data: ByteArray) : ResponseProcess() {
      * @return 数据超时时间（毫秒）
      */
     internal fun getDataTimeout(): Long {
-        return dataTimeout.takeIf { it > 0 } ?: timeout
+        return _dataTimeout.takeIf { it > 0 } ?: timeout
     }
 
     /**
