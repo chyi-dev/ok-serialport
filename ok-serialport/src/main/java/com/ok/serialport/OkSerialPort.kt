@@ -17,6 +17,7 @@ import com.ok.serialport.stick.BaseStickPacketHandle
 import com.ok.serialport.utils.SerialLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -71,6 +72,9 @@ class OkSerialPort private constructor(
 
     //重连次数
     private var retryTimes = 0
+
+    // 重连任务
+    private var reconnectJob: Job? = null
 
     // 串口连接监听
     private var onConnectListener: OnConnectListener? = null
@@ -186,15 +190,18 @@ class OkSerialPort private constructor(
      * 重连
      */
     private fun reconnect() {
-        coroutineScope.launch {
+        if (retryCount <= 0 || retryTimes >= retryCount) {
+            if (retryCount > 0) {
+                onConnectListener?.onDisconnect(devicePath, ReconnectFailException("重连失败"))
+            }
+            return
+        }
+        reconnectJob?.cancel()
+        reconnectJob = coroutineScope.launch {
             delay(retryInterval)
             retryTimes++
             logger.log("开始重连，进度：$retryTimes / $retryCount")
             connect()
-            delay(100)
-            if (retryTimes >= retryCount && !isConnect()) {
-                onConnectListener?.onDisconnect(devicePath, ReconnectFailException("重连失败"))
-            }
         }
     }
 
@@ -202,12 +209,15 @@ class OkSerialPort private constructor(
      * 断开串口连接
      */
     fun disconnect() {
+        reconnectJob?.cancel()
+        reconnectJob = null
+        retryTimes = 0
         if (isConnect()) {
             serialPortProcess.disconnect()
             setConnected(false)
-            onConnectListener = null
-            onDataListener = null
         }
+        onConnectListener = null
+        onDataListener = null
     }
     
     /**

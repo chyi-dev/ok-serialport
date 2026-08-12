@@ -356,10 +356,13 @@ class MainActivity : AppCompatActivity() {
     private fun openSerialPort() {
         if (serialClient?.isConnect() == true) {
             serialClient?.disconnect()
+            serialClient = null
             binding.tvOpenState.text = "开启"
             binding.viewOpenState.setBackgroundColor(Color.RED)
             return
         }
+        // 未连接时也可能有重连任务在跑，先停掉旧实例再重建
+        serialClient?.disconnect()
         serialClient = OkSerialPort.Builder()
             .devicePath(devicePath!!)
             .baudRate(baudRate!!)
